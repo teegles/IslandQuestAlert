@@ -1,6 +1,6 @@
 # IslandQuestAlert
 
-A lightweight, dependency-free World of Warcraft **Retail** addon for Island Expedition quest/rescue alerts, elapsed completion times, and Tell Me a Tale item receipts. Install it and farm: no in-game configuration is required. It scans with the world map closed, shows **ISLAND QUEST DETECTED!** in Blizzard's raid-warning display, plays the built-in raid-warning sound, and writes the alert to your chat.
+A lightweight, dependency-free World of Warcraft **Retail** addon for Island Expedition quest/rescue alerts, elapsed completion times, Tell Me a Tale item receipts, and a persistent expedition history. Install it and farm: no in-game configuration is required. It scans with the world map closed, shows **ISLAND QUEST DETECTED!** in Blizzard's raid-warning display, plays the built-in raid-warning sound, and writes the alert to your chat.
 
 **Detection is conditional on what the game exposes. This is not a guaranteed island-wide rescue radar.** Public map APIs do not establish that every Helping Hand NPC has an enumerable marker. This build includes diagnostics so actual expedition data can be used to identify missing marker types. The Lua was tested against mocked APIs, not inside a running WoW client.
 
@@ -26,6 +26,7 @@ World of Warcraft/
             └── IslandQuestAlert/
                 ├── IslandQuestAlert.toc
                 ├── TaleItems.lua
+                ├── Stats.lua
                 ├── IslandQuestAlert.lua
                 ├── README.md
                 └── API_RESEARCH.md
@@ -53,6 +54,8 @@ The addon starts and stops island scanning automatically. No sound file, frame p
 
 | Command | Action |
 | --- | --- |
+| `/iqa` or `/iqa stats` | Toggle the expedition stats window. Tracking is automatic. |
+| `/iqa help` | List optional commands. |
 | `/iqa test` | Test the screen notification, chat message, and built-in sound (if enabled). |
 | `/iqa debug` | Toggle automatic diagnostic chat and a saved 400-line log. Off by default. |
 | `/iqa status` | Show scanning state, elapsed time, map IDs, settings, and qualifying objectives. |
@@ -68,7 +71,29 @@ The addon starts and stops island scanning automatically. No sound file, frame p
 
 Example syntax only: `/iqa allow quest 12345`. **12345 is a placeholder, not a verified rescue quest ID.** Allowlist only IDs you have confirmed in diagnostic output. A wrong entry can intentionally re-enable an unrelated objective.
 
-Settings, frame position, log, timer/last result and expedition deduplication are saved per character in `WTF/Account/<account>/<realm>/<character>/SavedVariables/IslandQuestAlert.lua`. Save occurs on logout or `/reload`; do not edit SavedVariables while the game is running.
+Settings, frame position, log, timer/last result, expedition history/item ledger and expedition deduplication are saved per character in `WTF/Account/<account>/<realm>/<character>/SavedVariables/IslandQuestAlert.lua`. Save occurs on logout or `/reload`; do not edit SavedVariables while the game is running.
+
+## Expedition stats and item history
+
+Type **`/iqa`** or **`/iqa stats`** to open the draggable stats window. It tracks automatically in the background, even if you never open the window. The history is saved per character and survives reloads and normal logout. `/iqa reset` only resets objective notifications; it does not erase history.
+
+The window shows:
+
+- Started and completed expedition counts, unconfirmed exits, and interrupted runs.
+- Average completion time measured from entry.
+- Item quantities received while known to be needed, already completed, or of unknown progress.
+- Completed runs since the last linked item known to be needed—a visible dry streak.
+- Every recorded run, newest first, with its island, difficulty, timestamp, result and duration. **NEEDED ITEM** marks appear beside runs with a needed Tale item, and the item names/quantities appear underneath.
+
+Use **Older/Newer** to browse all runs, twelve per page. Scroll within a page; Ctrl+A/C copies that page. The window updates when you finish an island or receive an item, and its active-run timer updates while open. No history is pruned automatically.
+
+**Tracking starts with version 1.3.0.** Earlier islands, including a previous dry streak, cannot be reconstructed from the existing last-run timer. If tracking begins during a run already timed by the previous addon, its row notes that earlier item receipts are unavailable. Logging back in outside an unfinished run marks it **Interrupted** and retains only its last observed time, without counting it as completed.
+
+Needed means the matching quest criterion was explicitly incomplete when the item was received. Markers remain in history after you turn the quest in. Duplicates count as received quantities, not distinct achievement quests. Items with unavailable/unmatched criterion data are labeled **progress unknown** and do not reset the needed-item streak. Already-completed item receipts are logged quietly even though their alerts are suppressed.
+
+Items received during a run are linked to it. For two minutes after an observed completion, late rewards can be linked to that run as **after completion (inferred)**. Loot events contain no expedition-run ID; unusually late rewards or immediately entering another run can defeat that inference. Outside that window, receipts remain unassigned and do not reset the run streak; the newest ten unassigned receipts are shown separately, and all are retained in SavedVariables.
+
+The ledger distinguishes **personal loot** from a fallback **inventory increase**. When the matching loot line arrives later, the existing inventory receipt is annotated as loot-confirmed instead of being recorded twice. Inventory increases can include bank/mail retrievals, so these statistics describe observed receipts, not a measured drop probability. A linked inventory receipt known to be needed can reset the streak. A dry streak does not predict when an item will drop, and a scenario completion is not a verified victory.
 
 ## Automatic achievement progress
 
@@ -134,16 +159,18 @@ Diagnostic logging can be verbose, particularly for nameplates. Diagnostic loggi
 
 For the new features, compare `/iqa time` before and after `/reload`, finish an island and confirm one frozen result, then leave and check that result remains available. Receiving a listed item should generate one alert despite both chat and bag events. Existing items and other players' loot should not. Confirm item alerts also appear during the return transition. An early exit should say completion unconfirmed. With debug enabled, a completed rescue/item criterion should log an ignored decision and produce no sound or warning. Missing criteria should still alert. Completing a criterion during the island should stop subsequent repeats without a reset.
 
+To validate stats in game, open `/iqa stats`, finish one island and verify that it adds exactly one completed row. Reload and confirm the row remains. A needed item should mark the correct row once despite chat/bag event duplication; check the source and inferred-return labels. An early exit or an offline interruption must not become a completed run. Verify that `/iqa reset` leaves history intact.
+
 ## Local verification
 
 From the addon directory:
 
 ```bash
-luac5.1 -p TaleItems.lua IslandQuestAlert.lua
+luac5.1 -p TaleItems.lua Stats.lua IslandQuestAlert.lua
 lua5.1 tests/run.lua
 ```
 
-The mock suite covers entry/exit on all eleven instance IDs, unrelated-objective filtering, cross-source deduplication, reload persistence, asynchronous quest names, missing-map recovery, repeat timing, sound settings and diagnostic export. It also covers completion vs. exit, timer persistence, all twenty item IDs, personal loot filtering, localized stack messages, duplicate receipts, rewards during return loading, completed and incomplete achievement criteria, account completion, localized criterion names and missing progress data. Tests are not loaded by the TOC. Actual marker availability, visuals, sound playback, achievement localization, and modern client restrictions still require the in-game procedure above.
+The mock suite covers entry/exit on all eleven instance IDs, unrelated-objective filtering, cross-source deduplication, reload persistence, asynchronous quest names, missing-map recovery, repeat timing, sound settings and diagnostic export. It also covers completion vs. exit, timer persistence, all twenty item IDs, personal loot filtering, localized stack messages, duplicate receipts, rewards during return loading, completed and incomplete achievement criteria, account completion, localized criterion names and missing progress data. Stats tests cover persistent run counts, reload idempotence, late reward attribution, needed/unknown/completed item states, streaks, unassigned receipts, pagination and offline interruptions. Tests are not loaded by the TOC. Actual marker availability, visuals, sound playback, achievement localization, and modern client restrictions still require the in-game procedure above.
 
 See [API_RESEARCH.md](API_RESEARCH.md) for checked signatures, Blizzard source links, and the boundaries of closed-map detection.
 

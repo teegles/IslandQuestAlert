@@ -15,7 +15,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Validate and test
         run: |
-          luac5.1 -p TaleItems.lua IslandQuestAlert.lua
+          luac5.1 -p TaleItems.lua Stats.lua IslandQuestAlert.lua
           lua5.1 tests/run.lua
       - name: Package addon
         run: python3 scripts/package.py

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+
+- Add `/iqa` and `/iqa stats` to open an automatically tracked expedition history.
+- Save every observed run, difficulty, completion time and result per character.
+- Mark runs receiving Tale items whose criteria were known to be incomplete.
+- Show completed-run dry streaks and needed, unknown and completed-item receipt totals.
+- Link late rewards within two minutes of completion, explicitly labeled as inferred.
+- Retain source information and upgrade bag receipts when personal loot is confirmed.
+- Paginate history and distinguish offline interruptions from completed expeditions.
+
 ## 1.2.0
 
 - Automatically read Helping Hand and Tell Me a Tale achievement progress.

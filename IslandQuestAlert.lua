@@ -193,6 +193,7 @@ local function finishExpedition(reason)
     local elapsed = math.max(0, session.endedAt - session.startedAt)
     db.lastRun = {instanceID = session.instanceID, startedAt = session.startedAt,
         endedAt = session.endedAt, elapsed = elapsed, reason = reason}
+    ns.Stats.Finish(session, db.lastRun)
     local label = reason == "completed" and "Island complete" or "Island left (completion unconfirmed)"
     local summary = (islands[session.instanceID] or "Island") .. " - " .. duration(elapsed) .. " from entry"
     candidates = {}
@@ -228,11 +229,15 @@ local function receivedItem(id, count, link, source)
     local paired = math.min(count, credit[opposite])
     credit[opposite] = credit[opposite] - paired
     count = count - paired
+    if source == "loot" and paired > 0 then ns.Stats.ConfirmLoot(id, paired) end
     if count == 0 then return end
     credit[source] = credit[source] + count
     refreshProgress()
     local name = call(C_Item, "GetItemInfo", id) or taleItems[id]
     local reason = progressReason(13127, name, taleItems[id])
+    local progress = achievementProgress[13127]
+    local needed = progress and (progress.byName[normalize(name)] == false or progress.byName[normalize(taleItems[id])] == false)
+    ns.Stats.RecordItem(id, name, count, reason and "complete" or (needed and "needed" or "unknown"), source)
     if reason then
         changed("item-progress:" .. id, "Ignored Tale item " .. id .. ": " .. reason)
         return
@@ -496,11 +501,12 @@ local function startTicker()
 end
 updateLocation = function()
     if not db then return end
-    local _, _, _, _, _, _, _, current = GetInstanceInfo()
+    local _, _, _, difficulty, _, _, _, current = GetInstanceInfo()
     if not islands[current] or not IsInInstance() then
         if session then finishExpedition("left") end
         if active then log("Left Island Expedition") end
         stop()
+        ns.Stats.Leave()
         db.session, session, mapID, instanceID = nil, nil, nil, nil
         return
     end
@@ -512,6 +518,7 @@ updateLocation = function()
     end
     session = db.session
     session.startedAt = session.startedAt or time() -- Upgrade an existing v1.0 session.
+    ns.Stats.Begin(session, islands[current], difficulty)
     active = true
     mapID = call(C_Map, "GetBestMapForUnit", "player")
     refreshProgress()
@@ -543,7 +550,7 @@ local function dump()
         tinsert(UISpecialFrames, "IslandQuestAlertDiagnostics")
     end
     local _, _, _, interface = GetBuildInfo()
-    local header = "IslandQuestAlert 1.2.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
+    local header = "IslandQuestAlert 1.3.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
         .. " active=" .. tostring(active) .. " instance=" .. scalar(instanceID) .. " map=" .. scalar(mapID)
     IslandQuestAlertDiagnostics.edit:SetText(header .. "\n" .. table.concat(db.log, "\n"))
     IslandQuestAlertDiagnostics:Show()
@@ -553,7 +560,8 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
     if not db then return end
     local command, args = message:match("^%s*(%S*)%s*(.-)%s*$")
     command = command:lower()
-    if command == "test" then notify({name = "Test rescue objective", mapID = mapID or 0, x = 0.5, y = 0.5})
+    if command == "" or command == "stats" then ns.Stats.Toggle()
+    elseif command == "test" then notify({name = "Test rescue objective", mapID = mapID or 0, x = 0.5, y = 0.5})
     elseif command == "debug" then
         db.debug = not db.debug; decisions = {}; chat("Debug " .. (db.debug and "on" or "off"))
         if db.debug then
@@ -604,7 +612,7 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
         db.allow[kind][id] = command == "allow" or nil
         chat(command .. " " .. kind .. " " .. id); decisions = {}; schedule()
     else
-        chat("Commands: test, debug, status, time, sound, reset, repeat, interval N, snapshot, dump, allow/deny TYPE ID")
+        chat("Commands: stats, test, debug, status, time, sound, reset, repeat, interval N, snapshot, dump, allow/deny TYPE ID")
     end
 end
 local locationEvents = {PLAYER_ENTERING_WORLD = true, ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ZONE_CHANGED_INDOORS = true}
@@ -613,6 +621,7 @@ driver:SetScript("OnEvent", function(_, event, ...)
         if ... ~= ADDON then return end
         IslandQuestAlertDB = IslandQuestAlertDB or {}
         db = IslandQuestAlertDB
+        ns.Stats.Init(db)
         if db.sound == nil then db.sound = true end
         if type(db.interval) ~= "number" or db.interval < 0.5 or db.interval > 60 then db.interval = 2 end
         db.log = db.log or {}; db.allow = db.allow or {}
@@ -624,6 +633,7 @@ driver:SetScript("OnEvent", function(_, event, ...)
         driver:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LEAVING_WORLD" then
         checkCompletion()
+        ns.Stats.Suspend()
         worldReady = false
         stop()
     elseif event == "PLAYER_ENTERING_WORLD" then

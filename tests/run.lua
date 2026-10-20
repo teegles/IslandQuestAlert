@@ -12,7 +12,7 @@ local function noop() end
 local frameMethods = {}
 for _, name in ipairs({"SetSize", "SetPoint", "SetFrameStrata", "SetMovable", "SetClampedToScreen", "EnableMouse",
     "RegisterForDrag", "SetFont", "SetTextColor", "SetWidth", "SetFontObject", "SetMultiLine", "SetAutoFocus",
-    "StartMoving", "StopMovingOrSizing", "ClearAllPoints", "SetBackdrop", "SetBackdropColor", "SetScrollChild",
+    "SetJustifyH", "StartMoving", "StopMovingOrSizing", "ClearAllPoints", "SetBackdrop", "SetBackdropColor", "SetScrollChild",
     "SetVerticalScroll"}) do frameMethods[name] = noop end
 function frameMethods:SetText(text) self.text = text end
 function frameMethods:CreateFontString() return setmetatable({}, {__index = frameMethods}) end
@@ -96,6 +96,7 @@ C_Item = {GetItemCount = function(id) return counts[id] or 0 end, GetItemInfo = 
 C_ScenarioInfo = {GetScenarioInfo = function() return {isComplete = scenarioComplete} end}
 local ns = {}
 assert(loadfile("TaleItems.lua"))("IslandQuestAlert", ns)
+assert(loadfile("Stats.lua"))("IslandQuestAlert", ns)
 assert(loadfile("IslandQuestAlert.lua"))("IslandQuestAlert", ns)
 local driver = frames[1]
 local function event(name, ...) driver.scripts.OnEvent(driver, name, ...) end
@@ -397,4 +398,88 @@ progressUnavailable = false
 event("RECEIVED_ACHIEVEMENT_LIST"); advance(.3)
 alertsBefore = #warnings
 advance(32); assert(#warnings == alertsBefore)
-print("PASS: detection, timing, item receipts, native alerts, and automatic achievement-progress filtering")
+-- Integrated tracking records runs/receipts automatically, including suppressed
+-- already-completed items. Opening the window requires no tracking setup.
+local integrated = ns.Stats.Summary()
+assert(integrated.started > 0 and integrated.completed > 0 and integrated.left > 0)
+assert(integrated.needed > 0 and integrated.unknown > 0 and integrated.alreadyComplete > 0)
+command("stats"); assert(IslandQuestAlertStats:IsShown())
+assert(IslandQuestAlertStats.summary.text:find("Needed item receipts:", 1, true))
+command(""); assert(not IslandQuestAlertStats:IsShown())
+-- Isolate the ledger to test precise totals, reloads and reward attribution.
+local statsNS, savedStats = {}, {}
+assert(loadfile("Stats.lua"))("IslandQuestAlert", statsNS)
+local stats = statsNS.Stats
+stats.Init(savedStats)
+local firstRun = {instanceID = 1893, startedAt = clock}
+stats.Begin(firstRun, "Dread Chain", "Mythic")
+stats.Begin(firstRun, "Dread Chain", "Mythic")
+assert(stats.Summary().started == 1)
+stats.Init(savedStats); stats.Begin(firstRun, "Dread Chain", "Mythic")
+assert(stats.Summary().started == 1)
+clock = clock + 60
+firstRun.endedAt = clock
+local result = {endedAt = clock, elapsed = 60, reason = "completed"}
+stats.Finish(firstRun, result); stats.Finish(firstRun, result)
+assert(stats.Summary().completed == 1 and stats.Summary().streak == 1)
+-- Needed flag is a snapshot at receipt time and remains after later turn-in.
+stats.RecordItem(163483, "Razorfin Hunting Spear", 1, "needed", "bag")
+assert(savedStats.stats.receipts[1].runID == firstRun.statsRunID)
+assert(savedStats.stats.receipts[1].association == "after completion (inferred)")
+stats.ConfirmLoot(163483, 1); stats.ConfirmLoot(163483, 1)
+assert(#savedStats.stats.receipts == 1 and savedStats.stats.receipts[1].lootConfirmed == 1)
+assert(stats.Summary().needed == 1 and stats.Summary().streak == 0)
+local secondRun = {instanceID = 1813, startedAt = clock}
+stats.Begin(secondRun, "Un'gol Ruins", "Heroic")
+clock = clock + 90
+secondRun.endedAt = clock
+stats.Finish(secondRun, {endedAt = clock, elapsed = 90, reason = "completed"})
+stats.RecordItem(163475, "Magical Spyglass", 1, "unknown", "loot")
+stats.RecordItem(163476, "Elemental Core", 1, "complete", "loot")
+local totals = stats.Summary()
+assert(totals.completed == 2 and totals.streak == 1 and totals.totalSeconds == 150)
+assert(totals.unknown == 1 and totals.alreadyComplete == 1)
+-- Expired return window and bank/mail receipts cannot be assigned to the old run.
+clock = clock + 121
+stats.RecordItem(163483, "Razorfin Hunting Spear", 1, "needed", "bag")
+assert(not savedStats.stats.receipts[4].runID)
+assert(stats.Summary().streak == 1 and stats.Summary().unassigned == 1)
+stats.Init(savedStats)
+assert(stats.Summary().started == 2 and stats.Summary().needed == 2)
+local thirdRun = {instanceID = 1814, startedAt = clock}
+stats.Begin(thirdRun, "Havenswood", "Normal")
+stats.RecordItem(163483, "Razorfin Hunting Spear", 1, "needed", "loot")
+assert(stats.Summary().streak == 0)
+clock = clock + 30
+thirdRun.endedAt = clock
+stats.Finish(thirdRun, {endedAt = clock, elapsed = 30, reason = "left"})
+assert(stats.Summary().completed == 2 and stats.Summary().left == 1)
+for i = 1, 14 do
+    local run = {instanceID = 1814, startedAt = clock}
+    stats.Begin(run, "Havenswood", "Normal")
+    clock = clock + 1; run.endedAt = clock
+    stats.Finish(run, {endedAt = clock, elapsed = 1, reason = "left"})
+end
+assert(#savedStats.stats.runs == 17)
+stats.Toggle(); assert(IslandQuestAlertStats:IsShown())
+local newer, older
+for _, frame in ipairs(frames) do
+    if frame.text == "Older" then older = frame end
+    if frame.text == "Newer" then newer = frame end
+end
+older.scripts.OnClick(); older.scripts.OnClick()
+local heading, text, paging = stats.RenderText()
+assert(paging == "Page 2 / 2" and text:find("NEEDED ITEM", 1, true))
+assert(text:find("[progress unknown]", 1, true))
+newer.scripts.OnClick()
+assert(select(3, stats.RenderText()) == "Page 1 / 2")
+stats.Toggle(); assert(not IslandQuestAlertStats:IsShown())
+-- An offline exit is interrupted, not a fabricated completion or running clock.
+local interruptedRun = {instanceID = 1814, startedAt = clock}
+stats.Begin(interruptedRun, "Havenswood", "Normal")
+clock = clock + 5; stats.Suspend()
+clock = clock + 1000; stats.Init(savedStats); stats.Leave()
+local interrupted = savedStats.stats.runs[interruptedRun.statsRunID]
+assert(interrupted.reason == "interrupted" and interrupted.elapsed == 5)
+assert(stats.Summary().interrupted == 1 and stats.Summary().completed == 2)
+print("PASS: alerts, progress, persistent stats, reward attribution, streaks, pagination, interruption and UI")

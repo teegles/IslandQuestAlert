@@ -2,10 +2,11 @@
 ## Title: IslandQuestAlert
 ## Notes: Island quest and rescue alerts with map diagnostics.
 ## Author: IslandQuestAlert contributors
-## Version: 1.2.0
+## Version: 1.3.0
 ## X-Website: https://github.com/teegles/IslandQuestAlert
 ## X-License: MIT
 ## SavedVariablesPerCharacter: IslandQuestAlertDB
 
 TaleItems.lua
+Stats.lua
 IslandQuestAlert.lua

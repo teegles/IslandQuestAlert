@@ -7,7 +7,7 @@ import re
 root = Path(__file__).resolve().parents[1]
 toc = (root / "IslandQuestAlert.toc").read_text()
 version = re.search(r"^## Version: (.+)$", toc, re.MULTILINE).group(1).strip()
-files = ["IslandQuestAlert.toc", "TaleItems.lua", "IslandQuestAlert.lua", "README.md", "API_RESEARCH.md", "LICENSE", "CHANGELOG.md"]
+files = ["IslandQuestAlert.toc", "TaleItems.lua", "Stats.lua", "IslandQuestAlert.lua", "README.md", "API_RESEARCH.md", "LICENSE", "CHANGELOG.md"]
 destination = root / "dist" / f"IslandQuestAlert-{version}.zip"
 destination.parent.mkdir(exist_ok=True)
 with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
