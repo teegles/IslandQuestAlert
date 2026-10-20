@@ -3,6 +3,11 @@
 local now, clock, currentInstance, currentMap = 0, 1000, 0, nil
 local tasks, quests, lines, forceVisible, pois, vignettes, units = {}, {}, {}, {}, {}, {}, {}
 local titles, classes, timers, frames, sounds, messages, requested = {}, {}, {}, {}, 0, {}, {}
+local warnings, soundCalls = {}, {}
+RaidWarningFrame = {AddMessage = function(self, text, color, seconds)
+    assert(self == RaidWarningFrame)
+    warnings[#warnings + 1] = {text = text, color = color, seconds = seconds}
+end}
 local function noop() end
 local frameMethods = {}
 for _, name in ipairs({"SetSize", "SetPoint", "SetFrameStrata", "SetMovable", "SetClampedToScreen", "EnableMouse",
@@ -33,7 +38,10 @@ function GetInstanceInfo() return "zone", "scenario", 1, "normal", 3, 0, false, 
 function IsInInstance() return currentInstance ~= 0, "scenario" end
 function GetBuildInfo() return "12.1.5", "mock", "mock", 120105 end
 function GetLocale() return "enUS" end
-function PlaySound() sounds = sounds + 1 end
+function PlaySound(sound, channel)
+    sounds = sounds + 1
+    soundCalls[#soundCalls + 1] = {sound = sound, channel = channel}
+end
 function UnitName(unit) return units[unit] and units[unit].name end
 function UnitGUID(unit) return units[unit] and units[unit].guid end
 function UnitIsDeadOrGhost(unit) return units[unit] and units[unit].dead end
@@ -119,7 +127,15 @@ tasks = {{questID = 100, isQuestStart = true, x = .25, y = .6, mapID = 1031}}
 titles[100] = "Rescue quest"
 lines = {{questID = 100, questName = "Rescue quest", startMapID = 1031}}
 scan(); assert(seen("quest:100") and seenCount() == 1 and sounds == 1)
-scan(); assert(sounds == 1)
+assert(warnings[#warnings].text:find("ISLAND QUEST DETECTED!", 1, true))
+assert(warnings[#warnings].text:find("Rescue quest", 1, true))
+assert(warnings[#warnings].text:find("25.0, 60.0", 1, true))
+assert(warnings[#warnings].color.r == 1 and warnings[#warnings].color.g == .9)
+assert(warnings[#warnings].seconds == 8)
+assert(messages[#messages]:find("ISLAND QUEST DETECTED!", 1, true))
+assert(soundCalls[#soundCalls].sound == SOUNDKIT.RAID_WARNING and soundCalls[#soundCalls].channel == "Master")
+local warningCount, chatCount = #warnings, #messages
+scan(); assert(sounds == 1 and #warnings == warningCount and #messages == chatCount)
 tasks, lines = {}, {}; scan()
 tasks = {{questID = 100, isQuestStart = true}}; scan(); assert(sounds == 1)
 -- Reload boundary must retain seen keys.
@@ -263,7 +279,29 @@ counts[163470] = counts[163470] + 1
 enter(0, nil)
 assert(receiptCount() == before + 1)
 loot(163470, 1); assert(receiptCount() == before + 1)
--- An item toast survives departure and the objective reset command.
-assert(IslandQuestAlertNotification:IsShown())
-command("reset"); assert(IslandQuestAlertNotification:IsShown())
+-- The default display needs no setup or custom frame; an item uses the same sound.
+assert(not IslandQuestAlertNotification:IsShown())
+local itemWarnings = 0
+for _, warning in ipairs(warnings) do
+    if warning.text:find("TELL ME A TALE ITEM!", 1, true) then itemWarnings = itemWarnings + 1 end
+end
+assert(itemWarnings > 0)
+local nativeWarningCount = #warnings
+command("reset"); assert(#warnings == nativeWarningCount)
+command("sound") -- Re-enable after the earlier opt-out test.
+local soundBefore = sounds
+advance(16)
+counts[163483] = counts[163483] + 1; event("BAG_UPDATE_DELAYED")
+assert(sounds == soundBefore + 1)
+assert(soundCalls[#soundCalls].sound == SOUNDKIT.RAID_WARNING and soundCalls[#soundCalls].channel == "Master")
+-- Automatically fall back if a UI replacement removes or breaks the native display.
+local native = RaidWarningFrame
+RaidWarningFrame = nil
+command("test"); assert(IslandQuestAlertNotification:IsShown())
+local beforeResume = sounds
+IslandQuestAlertNotification.scripts.OnUpdate()
+assert(sounds == beforeResume)
+RaidWarningFrame = {AddMessage = function() error("unavailable UI") end}
+command("test"); assert(IslandQuestAlertNotification:IsShown())
+RaidWarningFrame = native
 print("PASS: quest detection, timers, completion/exit, all 20 Tale items, loot/bag deduplication, and return rewards")

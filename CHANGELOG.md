@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+- Use Blizzard's built-in raid-warning display automatically, with no in-game setup.
+- Write quest/rescue alerts to chat as well as item and completion notifications.
+- Play the same built-in raid-warning sound immediately for quest and Tale item detections.
+- Keep an automatic custom-frame fallback and optional mute/diagnostic commands.
+
 ## 1.1.0
 
 - Measure each island from observed entry and show elapsed time at scenario completion.

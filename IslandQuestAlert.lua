@@ -93,26 +93,38 @@ local hint = alert:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 hint:SetPoint("BOTTOM", 0, 6)
 hint:SetText("Drag to move")
 alert:Hide()
+local function notificationText(objective)
+    local text = objective.name or (objective.questID and "Quest " .. objective.questID) or "Rescue NPC"
+    local location = coords(objective.x, objective.y)
+    if location then text = text .. "\n" .. location .. " (map " .. objective.mapID .. ")" end
+    return text
+end
 local function showNext()
     local objective = table.remove(queue, 1)
     currentNotification = objective
     if not objective then alert:Hide(); return end
     title:SetText(objective.title or "ISLAND QUEST DETECTED!")
-    local text = objective.name or (objective.questID and "Quest " .. objective.questID) or "Rescue NPC"
-    local location = coords(objective.x, objective.y)
-    if location then text = text .. "\n" .. location .. " (map " .. objective.mapID .. ")" end
-    detail:SetText(text)
+    detail:SetText(notificationText(objective))
     alert:Show()
     displayUntil = GetTime() + 8
-    if db.sound and not objective.silent and not objective.soundPlayed then
-        PlaySound(SOUNDKIT.RAID_WARNING, "Master")
-        objective.soundPlayed = true
-    end
 end
 alert:SetScript("OnUpdate", function()
     if GetTime() >= displayUntil then showNext() end
 end)
 local function notify(objective, priority)
+    local heading = objective.title or "ISLAND QUEST DETECTED!"
+    local text = notificationText(objective)
+    -- These notices stay on this player's screen/chat, just like other addon alerts.
+    -- Sound/chat happen at detection, even when several objectives arrive together.
+    chat(objective.chatMessage or (heading .. " " .. text:gsub("\n", " - ")))
+    if db.sound and not objective.silent then PlaySound(SOUNDKIT.RAID_WARNING, "Master") end
+    if RaidWarningFrame and type(RaidWarningFrame.AddMessage) == "function" then
+        local ok = pcall(RaidWarningFrame.AddMessage, RaidWarningFrame,
+            heading .. "\n" .. text, {r = 1, g = 0.9, b = 0}, 8)
+        if ok then return end
+        changed("raid-warning-display", "Native raid warning unavailable; using built-in fallback frame")
+    end
+    -- Automatic fallback for clients/UI replacements without the standard frame.
     if priority then
         if currentNotification then table.insert(queue, 1, currentNotification) end
         table.insert(queue, 1, objective)
@@ -146,11 +158,10 @@ local function finishExpedition(reason)
         endedAt = session.endedAt, elapsed = elapsed, reason = reason}
     local label = reason == "completed" and "Island complete" or "Island left (completion unconfirmed)"
     local summary = (islands[session.instanceID] or "Island") .. " - " .. duration(elapsed) .. " from entry"
-    chat(label .. ": " .. summary)
     candidates = {}
     discardQuestAlerts()
     notify({kind = "finish", title = reason == "completed" and "ISLAND COMPLETE!" or "ISLAND ENDED",
-        name = summary, silent = true}, true)
+        name = summary, silent = true, chatMessage = label .. ": " .. summary}, true)
     log("Timer stopped: " .. reason .. " elapsed=" .. elapsed)
 end
 local function checkCompletion()
@@ -184,8 +195,8 @@ local function receivedItem(id, count, link, source)
     credit[source] = credit[source] + count
     local name = call(C_Item, "GetItemInfo", id) or taleItems[id]
     local text = (link or name) .. (count > 1 and (" x" .. count) or "")
-    chat("Tell Me a Tale item received: " .. text .. " - starts an achievement quest")
-    notify({kind = "item", title = "TELL ME A TALE ITEM!", name = text}, true)
+    notify({kind = "item", title = "TELL ME A TALE ITEM!", name = text,
+        chatMessage = "Tell Me a Tale item received: " .. text .. " - starts an achievement quest"}, true)
     log("Item receipt: id=" .. id .. " count=" .. count .. " source=" .. source)
 end
 local function scanItemChanges()
@@ -484,7 +495,7 @@ local function dump()
         tinsert(UISpecialFrames, "IslandQuestAlertDiagnostics")
     end
     local _, _, _, interface = GetBuildInfo()
-    local header = "IslandQuestAlert 1.1.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
+    local header = "IslandQuestAlert 1.1.1 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
         .. " active=" .. tostring(active) .. " instance=" .. scalar(instanceID) .. " map=" .. scalar(mapID)
     IslandQuestAlertDiagnostics.edit:SetText(header .. "\n" .. table.concat(db.log, "\n"))
     IslandQuestAlertDiagnostics:Show()

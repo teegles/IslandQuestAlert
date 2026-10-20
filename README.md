@@ -1,6 +1,6 @@
 # IslandQuestAlert
 
-A lightweight, dependency-free World of Warcraft **Retail** addon for Island Expedition quest/rescue alerts, elapsed completion times, and Tell Me a Tale item receipts. It scans with the world map closed, shows **ISLAND QUEST DETECTED!**, and plays the raid warning sound on the Master channel.
+A lightweight, dependency-free World of Warcraft **Retail** addon for Island Expedition quest/rescue alerts, elapsed completion times, and Tell Me a Tale item receipts. Install it and farm: no in-game configuration is required. It scans with the world map closed, shows **ISLAND QUEST DETECTED!** in Blizzard's raid-warning display, plays the built-in raid-warning sound, and writes the alert to your chat.
 
 **Detection is conditional on what the game exposes. This is not a guaranteed island-wide rescue radar.** Public map APIs do not establish that every Helping Hand NPC has an enumerable marker. This build includes diagnostics so actual expedition data can be used to identify missing marker types. The Lua was tested against mocked APIs, not inside a running WoW client.
 
@@ -39,15 +39,21 @@ mkdir -p "$WOW_RETAIL/Interface/AddOns"
 cp -r ./IslandQuestAlert "$WOW_RETAIL/Interface/AddOns/"
 ```
 
-If using the ZIP, extract it **into AddOns**, retaining its single `IslandQuestAlert/` directory. Avoid nesting `IslandQuestAlert/IslandQuestAlert/`. Directory and file case matter on Linux. Start WoW, enable IslandQuestAlert in AddOns, then run `/iqa test`.
+If using the ZIP, extract it **into AddOns**, retaining its single `IslandQuestAlert/` directory. Avoid nesting `IslandQuestAlert/IslandQuestAlert/`. Directory and file case matter on Linux. Start WoW with IslandQuestAlert enabled in AddOns. It starts automatically; `/iqa test` is an optional check.
 
 The TOC targets Retail interface **120105** (12.1.5). On a later patch, check the client interface with `/dump select(4, GetBuildInfo())`; update the TOC after checking compatibility. Do not install this in Classic.
 
-## Commands
+## Automatic alerts
+
+Quest/rescue detections and Tell Me a Tale item receipts use the same built-in sound, enabled by default on the Master channel. Each alert appears as large yellow text in the normal raid-warning area and is copied to your chat, with a name and objective coordinates when available. These are local notifications; they do not send a `/rw` to your group and work while solo. Sound and chat happen immediately when the objective is detected. WoW's Master volume and mute settings still apply.
+
+The addon starts and stops island scanning automatically. No sound file, frame placement, tracking selection or slash command is required. It automatically uses its included draggable notification frame if the standard warning display is unavailable. The commands below are optional; use them only for testing, personal preferences or troubleshooting. Explicitly saved preferences, such as a previous sound opt-out, are retained on updates.
+
+## Optional commands
 
 | Command | Action |
 | --- | --- |
-| `/iqa test` | Display the alert for eight seconds; play sound if enabled. Drag it to reposition. |
+| `/iqa test` | Test the screen notification, chat message, and built-in sound (if enabled). |
 | `/iqa debug` | Toggle automatic diagnostic chat and a saved 400-line log. Off by default. |
 | `/iqa status` | Show scanning state, elapsed time, map IDs, settings, and qualifying objectives. |
 | `/iqa time` | Show the current elapsed time and last recorded expedition result. |
@@ -73,7 +79,7 @@ Settings, frame position, log, timer/last result and expedition deduplication ar
 
 Unknown area POIs, vignettes, task quests and bonus objectives are diagnostic-only. The addon does not infer a quest from yellow-looking artwork, a reward quest ID, or words such as “rescue.” Rares, Azerite and standard expedition indicators are excluded by default. Unknown objectives can therefore be missed; this is deliberate until their data is identified.
 
-Coordinates are percentages on the displayed UI map and appear only when returned for the objective. NPC-only detection has no coordinates; the player's position is never substituted for an NPC's position. Alerts discovered together are queued and displayed for eight seconds each.
+Coordinates are percentages on the displayed UI map and appear only when returned for the objective. NPC-only detection has no coordinates; the player's position is never substituted for an NPC's position. Native warnings are displayed for eight seconds, subject to Blizzard's message/line limits. Chat retains every emitted alert. The automatic fallback frame queues messages for eight seconds each.
 
 A quest ID is deduplicated across quest sources. A recognized rescue name is deduplicated across sources. Allowed area POI/vignette/NPC IDs each use their own identity. If Blizzard supplies an unrelated quest title and a separate NPC marker without a public link between them, those can produce two alerts; the addon cannot safely infer that they are one objective. It does not contain a verified quest-to-rescue database.
 
@@ -97,15 +103,15 @@ The start timestamp survives `/reload`. Enabling/installing the addon or joining
 
 ## Tell Me a Tale item alerts
 
-Receiving one of the twenty quest-starter items shows **TELL ME A TALE ITEM!**, its item link/name and quantity, plays the configured sound, and prints one receipt line. Matching uses exact item IDs (listed in [TaleItems.lua](TaleItems.lua)), independently of client language. Cached localized names are preferred over English fallback names.
+Receiving one of the twenty quest-starter items shows **TELL ME A TALE ITEM!**, its item link/name and quantity, plays the same built-in sound as quest alerts (unless muted), and prints one receipt line. Matching uses exact item IDs (listed in [TaleItems.lua](TaleItems.lua)), independently of client language. Cached localized names are preferred over English fallback names.
 
-Item detection is event-driven and remains enabled outside islands to catch return rewards. Personal `CHAT_MSG_LOOT` messages are checked against your player GUID; `BAG_UPDATE_DELAYED` provides a carried-inventory fallback. Matching quantities from the two sources are paired for 15 seconds, in either order. Existing carried items establish a baseline on login/reload and do not generate alerts. Bag counts are kept across normal loading transitions. Item and finish notifications survive departure; queued quest-marker alerts are discarded on exit.
+Item detection is event-driven and remains enabled outside islands to catch return rewards. Personal `CHAT_MSG_LOOT` messages are checked against your player GUID; `BAG_UPDATE_DELAYED` provides a carried-inventory fallback. Matching quantities from the two sources are paired for 15 seconds, in either order. Existing carried items establish a baseline on login/reload and do not generate alerts. Bag counts are kept across normal loading transitions. Native item and finish notices remain on screen through departure until Blizzard fades them. In the fallback frame, queued quest-marker alerts are discarded on exit.
 
 These are receipt notifications for every matching item, including duplicates. They do not assert that its quest is missing from your achievement progress, accept it, or turn it in. The carried-inventory fallback can also alert when you retrieve an item from a bank or mailbox; it cannot infer acquisition provenance. A temporary unavailable inventory result or exceptionally delayed events can limit detection/deduplication. An item gained and consumed entirely between bag events requires a personal loot message to be detected.
 
 ## In-game validation and marker discovery
 
-1. Outside an expedition, run `/iqa test`, move the frame, and check sound. `/iqa status` should show scanning disabled.
+1. Outside an expedition, optionally run `/iqa test` and check the screen warning, chat line and sound. `/iqa status` should show scanning disabled.
 2. Enter an expedition with `/iqa debug` enabled. Run `/iqa status` and confirm the instance and UI map IDs. Keep the world map closed and run `/iqa snapshot` to establish a baseline.
 3. When a rescue/quest appears, run `/iqa snapshot` again. If safe, hover or manually target its NPC to expose the nearby-unit fallback. The log includes NPC IDs for target/mouseover/nameplate units.
 4. Check whether an alert occurred automatically. Repeated scans should not re-alert unless repeat is on. `/reload` should preserve the seen objective; `/iqa reset` should allow another alert.
@@ -114,7 +120,7 @@ These are receipt notifications for every matching item, including duplicates. T
 7. If a numeric task/POI/vignette ID is confirmed to represent the rescue, allow it using the corresponding command and repeat the closed-map test. Unknown generic bonus objectives are never enabled en masse.
 8. Leave the expedition and check that scanning stops. Toggle debug off for normal farming.
 
-Diagnostic logging can be verbose, particularly for nameplates. It is intentionally silent when disabled. The saved log persists after debug is turned off and may contain character/NPC/quest names.
+Diagnostic logging can be verbose, particularly for nameplates. Diagnostic logging is silent when disabled; actual alerts still appear in chat. The saved log persists after debug is turned off and may contain character/NPC/quest names.
 
 For the new features, compare `/iqa time` before and after `/reload`, finish an island and confirm one frozen result, then leave and check that result remains available. Receiving a listed item should generate one alert despite both chat and bag events. Existing items and other players' loot should not. Confirm item alerts also appear during the return transition. An early exit should say completion unconfirmed.
 
