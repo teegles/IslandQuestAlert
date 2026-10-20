@@ -1,0 +1,41 @@
+name: Validate and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Validate and test
+        run: |
+          luac5.1 -p TaleItems.lua IslandQuestAlert.lua
+          lua5.1 tests/run.lua
+      - name: Package addon
+        run: python3 scripts/package.py
+      - name: Verify tag matches TOC
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          version = re.search(r'^## Version: (.+)$', Path('IslandQuestAlert.toc').read_text(), re.M).group(1).strip()
+          assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag must match TOC version'
+          PY
+      - name: Publish installable ZIP
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/*.zip --verify-tag --title "IslandQuestAlert $RELEASE_TAG" --notes-file RELEASE_NOTES.md
+    permissions:
+      contents: write
