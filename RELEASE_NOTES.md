@@ -1,11 +1,11 @@
-Install and farm: no in-game configuration is required.
+Achievement progress is now read automatically—no setup required.
 
-- Quest/rescue and Tell Me a Tale item alerts use the same built-in raid-warning sound.
-- Large yellow notices appear in Blizzard's raid-warning area and also in your chat.
-- Sound and chat fire immediately at detection.
-- Expedition completion times remain automatic; `/iqa time` recalls the last run.
-- Existing optional mute/repeat preferences and diagnostics remain available.
+- Completed Helping Hand rescue criteria no longer cause recognized rescue alerts.
+- Completed Tell Me a Tale quest criteria no longer cause item alerts.
+- Earning criterion credit stops repeat alerts automatically.
+- Whole-achievement completion silences its recognized objectives; expedition timing remains active.
+- `/iqa status` includes completed/loaded criterion counts.
 
-In WowUp, install or update from `https://github.com/teegles/IslandQuestAlert`.
+Update through WowUp using `https://github.com/teegles/IslandQuestAlert`.
 
-The attached ZIP contains the installable `IslandQuestAlert/` folder. Lua 5.1/LuaJIT mock tests pass, including native warning output, shared sound and automatic fallback. In-game marker availability and UI/audio playback still require Retail validation. Public APIs may not expose every Helping Hand marker.
+Missing progress data or an unlinked generic marker remains eligible for an alert, to avoid hiding a needed objective. Criterion matching uses localized names, with English item-name fallbacks. Receiving an item is not treated as quest completion. Lua 5.1 and LuaJIT mock tests pass; in-game achievement and marker behavior still needs Retail validation.

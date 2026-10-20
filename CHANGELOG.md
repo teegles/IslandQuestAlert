@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Automatically read Helping Hand and Tell Me a Tale achievement progress.
+- Suppress recognized rescues and Tale item receipts for completed criteria.
+- Refresh on achievement events and stop repeats when credit is earned.
+- Silence a completed achievement's recognized objectives and all quest markers when both achievements are complete.
+- Show achievement completion/loaded counts in `/iqa status`.
+- Preserve potential alerts when progress or a criterion mapping is unavailable.
+
 ## 1.1.1
 
 - Use Blizzard's built-in raid-warning display automatically, with no in-game setup.

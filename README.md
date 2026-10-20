@@ -47,7 +47,7 @@ The TOC targets Retail interface **120105** (12.1.5). On a later patch, check th
 
 Quest/rescue detections and Tell Me a Tale item receipts use the same built-in sound, enabled by default on the Master channel. Each alert appears as large yellow text in the normal raid-warning area and is copied to your chat, with a name and objective coordinates when available. These are local notifications; they do not send a `/rw` to your group and work while solo. Sound and chat happen immediately when the objective is detected. WoW's Master volume and mute settings still apply.
 
-The addon starts and stops island scanning automatically. No sound file, frame placement, tracking selection or slash command is required. It automatically uses its included draggable notification frame if the standard warning display is unavailable. The commands below are optional; use them only for testing, personal preferences or troubleshooting. Explicitly saved preferences, such as a previous sound opt-out, are retained on updates.
+The addon starts and stops island scanning automatically. No sound file, frame placement, tracking selection or slash command is required. It automatically uses its included draggable notification frame if the standard warning display is unavailable. Achievement progress filtering is automatic too. The commands below are optional; use them only for testing, personal preferences or troubleshooting. Explicitly saved preferences, such as a previous sound opt-out, are retained on updates.
 
 ## Optional commands
 
@@ -69,6 +69,16 @@ The addon starts and stops island scanning automatically. No sound file, frame p
 Example syntax only: `/iqa allow quest 12345`. **12345 is a placeholder, not a verified rescue quest ID.** Allowlist only IDs you have confirmed in diagnostic output. A wrong entry can intentionally re-enable an unrelated objective.
 
 Settings, frame position, log, timer/last result and expedition deduplication are saved per character in `WTF/Account/<account>/<realm>/<character>/SavedVariables/IslandQuestAlert.lua`. Save occurs on logout or `/reload`; do not edit SavedVariables while the game is running.
+
+## Automatic achievement progress
+
+The addon reads your own **Helping Hand (13132)** and **Tell Me a Tale (13127)** progress automatically. A recognized rescue whose criterion is complete is ignored across quest, POI, vignette and nearby-NPC sources. A Tale item whose quest criterion is complete is ignored. Finishing an entire achievement silences its recognized objectives/items; once both achievements are complete, all quest-marker alerts stop. Expedition timing continues.
+
+It uses Blizzard's completion flags, including account/Warband credit as returned by the achievement API. No character inspection, tracking selection or open achievement window is required. Progress is read on entry, on achievement/criteria events, during island scans and before item alerts. `/iqa status` shows completed/loaded criteria counts. Progress changes also stop repeats for a criterion you have just completed.
+
+Criteria are matched by normalized localized names. Item names come from the item cache, with the included English names as fallback. If the criterion data is missing, a localized name is uncached, or a generic quest/explicitly allowed marker cannot be linked to a rescue criterion, the addon preserves the potential alert instead of inventing a completion state. Therefore, unmatched markers can still ping for already-completed objectives. A generic offer is not proof of missing achievement credit. Debug mode explains completed-criterion suppression. `/iqa reset` cannot override known achievement completion.
+
+Receiving or already holding a Tale item does not complete its quest criterion. Duplicates can still alert until the quest is completed, provided the overall achievement remains incomplete. There is no manually maintained checklist or in-game setup.
 
 ## What causes an alert
 
@@ -107,7 +117,7 @@ Receiving one of the twenty quest-starter items shows **TELL ME A TALE ITEM!**, 
 
 Item detection is event-driven and remains enabled outside islands to catch return rewards. Personal `CHAT_MSG_LOOT` messages are checked against your player GUID; `BAG_UPDATE_DELAYED` provides a carried-inventory fallback. Matching quantities from the two sources are paired for 15 seconds, in either order. Existing carried items establish a baseline on login/reload and do not generate alerts. Bag counts are kept across normal loading transitions. Native item and finish notices remain on screen through departure until Blizzard fades them. In the fallback frame, queued quest-marker alerts are discarded on exit.
 
-These are receipt notifications for every matching item, including duplicates. They do not assert that its quest is missing from your achievement progress, accept it, or turn it in. The carried-inventory fallback can also alert when you retrieve an item from a bank or mailbox; it cannot infer acquisition provenance. A temporary unavailable inventory result or exceptionally delayed events can limit detection/deduplication. An item gained and consumed entirely between bag events requires a personal loot message to be detected.
+These are receipt notifications for matching items whose quest/achievement is not known to be complete. They do not accept or turn in the quest. Unknown or unavailable progress is allowed through, so an alert is not a guarantee of missing achievement credit. The carried-inventory fallback can also alert when you retrieve an item from a bank or mailbox; it cannot infer acquisition provenance. A temporary unavailable inventory result or exceptionally delayed events can limit detection/deduplication. An item gained and consumed entirely between bag events requires a personal loot message to be detected.
 
 ## In-game validation and marker discovery
 
@@ -122,7 +132,7 @@ These are receipt notifications for every matching item, including duplicates. T
 
 Diagnostic logging can be verbose, particularly for nameplates. Diagnostic logging is silent when disabled; actual alerts still appear in chat. The saved log persists after debug is turned off and may contain character/NPC/quest names.
 
-For the new features, compare `/iqa time` before and after `/reload`, finish an island and confirm one frozen result, then leave and check that result remains available. Receiving a listed item should generate one alert despite both chat and bag events. Existing items and other players' loot should not. Confirm item alerts also appear during the return transition. An early exit should say completion unconfirmed.
+For the new features, compare `/iqa time` before and after `/reload`, finish an island and confirm one frozen result, then leave and check that result remains available. Receiving a listed item should generate one alert despite both chat and bag events. Existing items and other players' loot should not. Confirm item alerts also appear during the return transition. An early exit should say completion unconfirmed. With debug enabled, a completed rescue/item criterion should log an ignored decision and produce no sound or warning. Missing criteria should still alert. Completing a criterion during the island should stop subsequent repeats without a reset.
 
 ## Local verification
 
@@ -133,7 +143,7 @@ luac5.1 -p TaleItems.lua IslandQuestAlert.lua
 lua5.1 tests/run.lua
 ```
 
-The mock suite covers entry/exit on all eleven instance IDs, unrelated-objective filtering, cross-source deduplication, reload persistence, asynchronous quest names, missing-map recovery, repeat timing, sound settings and diagnostic export. It also covers completion vs. exit, timer persistence, all twenty item IDs, personal loot filtering, localized stack messages, duplicate receipts and rewards during return loading. Tests are not loaded by the TOC. Actual marker availability, visuals, sound playback, achievement localization, and modern client restrictions still require the in-game procedure above.
+The mock suite covers entry/exit on all eleven instance IDs, unrelated-objective filtering, cross-source deduplication, reload persistence, asynchronous quest names, missing-map recovery, repeat timing, sound settings and diagnostic export. It also covers completion vs. exit, timer persistence, all twenty item IDs, personal loot filtering, localized stack messages, duplicate receipts, rewards during return loading, completed and incomplete achievement criteria, account completion, localized criterion names and missing progress data. Tests are not loaded by the TOC. Actual marker availability, visuals, sound playback, achievement localization, and modern client restrictions still require the in-game procedure above.
 
 See [API_RESEARCH.md](API_RESEARCH.md) for checked signatures, Blizzard source links, and the boundaries of closed-map detection.
 

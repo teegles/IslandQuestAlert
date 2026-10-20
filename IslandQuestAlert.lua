@@ -15,6 +15,8 @@ local islands = {
     [1907] = "Snowblossom Village", [2124] = "Crestfall",
 }
 local rescueNames = {}
+local achievementProgress = {}
+local refreshProgress, progressReason
 local function normalize(s)
     return type(s) == "string" and s:lower():gsub("[%s%p]", "") or ""
 end
@@ -57,6 +59,41 @@ local function scalar(v)
     if issecretvalue and issecretvalue(v) then return "<restricted>" end
     if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then return tostring(v) end
     return "-"
+end
+-- Read the player's own achievement view (including account credit as reported
+-- by Blizzard). Never use inspection/comparison data or infer credit from loot.
+refreshProgress = function()
+    for _, id in ipairs({13132, 13127}) do
+        local _, _, _, complete = call(_G, "GetAchievementInfo", id)
+        local state = {complete = complete, byName = {}, loaded = 0, completed = 0}
+        local total = call(_G, "GetAchievementNumCriteria", id)
+        if type(total) == "number" then
+            for index = 1, total do
+                local name, _, done = call(_G, "GetAchievementCriteriaInfo", id, index)
+                if type(name) == "string" and name ~= "" then
+                    if id == 13132 then addRescueName(name) end
+                    if type(done) == "boolean" then
+                        local key = normalize(name)
+                        -- If labels ever collide, require all copies to be complete.
+                        if state.byName[key] == nil or not done then state.byName[key] = done end
+                        state.loaded = state.loaded + 1
+                        if done then state.completed = state.completed + 1 end
+                    end
+                end
+            end
+        end
+        achievementProgress[id] = state
+        changed("progress:" .. id, "Achievement " .. id .. " complete=" .. scalar(complete)
+            .. " criteria=" .. state.completed .. "/" .. state.loaded .. " completed/loaded")
+    end
+end
+progressReason = function(id, name, fallbackName)
+    local state = achievementProgress[id]
+    if not state then return nil end
+    if state.complete == true then return "achievement already complete (" .. id .. ")" end
+    if state.byName[normalize(name)] == true or (fallbackName and state.byName[normalize(fallbackName)] == true) then
+        return "achievement criterion already complete (" .. id .. ")"
+    end
 end
 local function coords(x, y)
     if type(x) == "number" and type(y) == "number" and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
@@ -193,7 +230,13 @@ local function receivedItem(id, count, link, source)
     count = count - paired
     if count == 0 then return end
     credit[source] = credit[source] + count
+    refreshProgress()
     local name = call(C_Item, "GetItemInfo", id) or taleItems[id]
+    local reason = progressReason(13127, name, taleItems[id])
+    if reason then
+        changed("item-progress:" .. id, "Ignored Tale item " .. id .. ": " .. reason)
+        return
+    end
     local text = (link or name) .. (count > 1 and (" x" .. count) or "")
     notify({kind = "item", title = "TELL ME A TALE ITEM!", name = text,
         chatMessage = "Tell Me a Tale item received: " .. text .. " - starts an achievement quest"}, true)
@@ -240,14 +283,6 @@ local function lootMessage(text, _, _, _, _, _, _, _, _, _, lineID, playerGUID)
     receivedItem(id, math.max(1, count), link, "loot")
 end
 
-local function loadRescueNames()
-    -- Criteria labels are NPC names on Helping Hand; do not treat criteria assetIDs
-    -- as creature or quest IDs (their meaning depends on the criteria type).
-    local n = call(_G, "GetAchievementNumCriteria", 13132)
-    for i = 1, tonumber(n) or 0 do
-        addRescueName(call(_G, "GetAchievementCriteriaInfo", 13132, i))
-    end
-end
 local function rescueMatch(name)
     local key = normalize(name)
     if rescueNames[key] then return key end
@@ -257,6 +292,18 @@ local function describe(o)
         .. " map=" .. scalar(o.mapID) .. " xy=" .. (coords(o.x, o.y) or "unavailable")
 end
 local function consider(o, allowed, reason)
+    if allowed then
+        local helping, tale = achievementProgress[13132], achievementProgress[13127]
+        local completedReason
+        if helping and tale and helping.complete == true and tale.complete == true then
+            completedReason = "both farming achievements already complete"
+        elseif rescueMatch(o.name) or o.key:match("^rescue:") then
+            completedReason = progressReason(13132, o.name)
+        elseif tale and tale.byName[normalize(o.name)] ~= nil then
+            completedReason = progressReason(13127, o.name)
+        end
+        if completedReason then allowed, reason = false, completedReason .. "; ignored" end
+    end
     changed("candidate:" .. o.key .. ":" .. o.source, describe(o) .. " => " .. reason)
     if not allowed then return end
     local old = candidates[o.key]
@@ -392,6 +439,7 @@ local function scan(snapshot)
     if not mapID or (session and session.endedAt) then return end
     local _, _, _, _, _, _, _, current = GetInstanceInfo()
     if current ~= instanceID or not IsInInstance() then return end
+    refreshProgress()
     candidates = {}
     log("Scan map=" .. mapID .. " instance=" .. instanceID)
     scanMap(mapID, snapshot)
@@ -466,7 +514,7 @@ updateLocation = function()
     session.startedAt = session.startedAt or time() -- Upgrade an existing v1.0 session.
     active = true
     mapID = call(C_Map, "GetBestMapForUnit", "player")
-    loadRescueNames()
+    refreshProgress()
     changed("location", "Island detected: " .. islands[current] .. " instance=" .. current .. " map=" .. scalar(mapID))
     if mapID then call(C_QuestLine, "RequestQuestLinesForMap", mapID) end
     startTicker()
@@ -495,7 +543,7 @@ local function dump()
         tinsert(UISpecialFrames, "IslandQuestAlertDiagnostics")
     end
     local _, _, _, interface = GetBuildInfo()
-    local header = "IslandQuestAlert 1.1.1 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
+    local header = "IslandQuestAlert 1.2.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
         .. " active=" .. tostring(active) .. " instance=" .. scalar(instanceID) .. " map=" .. scalar(mapID)
     IslandQuestAlertDiagnostics.edit:SetText(header .. "\n" .. table.concat(db.log, "\n"))
     IslandQuestAlertDiagnostics:Show()
@@ -535,6 +583,12 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
             .. " map=" .. scalar(mapID) .. " interval=" .. db.interval .. "s sound=" .. tostring(db.sound)
             .. " repeat=" .. tostring(db.repeatAlert))
         if session then chat("Elapsed: " .. duration((session.endedAt or time()) - session.startedAt) .. " from entry") end
+        refreshProgress()
+        for _, entry in ipairs({{13132, "Helping Hand"}, {13127, "Tell Me a Tale"}}) do
+            local progress = achievementProgress[entry[1]]
+            chat(entry[2] .. ": " .. (progress.complete == true and "complete" or
+                (progress.completed .. "/" .. progress.loaded .. " criteria completed/loaded")))
+        end
         local count = 0
         for key, o in pairs(candidates) do count = count + 1; chat(describe(o)) end
         chat("Currently detectable qualifying objectives: " .. count)
@@ -574,12 +628,17 @@ driver:SetScript("OnEvent", function(_, event, ...)
         stop()
     elseif event == "PLAYER_ENTERING_WORLD" then
         worldReady = true
+        refreshProgress()
         if not itemsInitialized then
             baselineItems() -- Existing items on login/reload are not fresh loot.
         else
             scanItemChanges() -- Retain pre-zone counts to catch return rewards.
         end
         updateLocation()
+    elseif event == "CRITERIA_UPDATE" or event == "CRITERIA_EARNED" or event == "CRITERIA_COMPLETE"
+        or event == "ACHIEVEMENT_EARNED" or event == "RECEIVED_ACHIEVEMENT_LIST" then
+        refreshProgress()
+        schedule()
     elseif event == "BAG_UPDATE_DELAYED" then scanItemChanges()
     elseif event == "CHAT_MSG_LOOT" then lootMessage(...)
     elseif event == "SCENARIO_COMPLETED" then
@@ -590,7 +649,6 @@ driver:SetScript("OnEvent", function(_, event, ...)
         log("Event " .. event .. " " .. scalar(...))
         if event == "NAME_PLATE_UNIT_ADDED" then plates[...] = true
         elseif event == "NAME_PLATE_UNIT_REMOVED" then plates[...] = nil
-        elseif event == "CRITERIA_UPDATE" then loadRescueNames()
         elseif event == "QUESTLINE_UPDATE" and ... and mapID then
             call(C_QuestLine, "RequestQuestLinesForMap", mapID)
         end
@@ -602,7 +660,8 @@ for _, event in ipairs({"ADDON_LOADED", "PLAYER_ENTERING_WORLD", "PLAYER_LEAVING
     "QUESTLINE_UPDATE", "AREA_POIS_UPDATED", "VIGNETTES_UPDATED", "VIGNETTE_MINIMAP_UPDATED", "SCENARIO_UPDATE",
     "SCENARIO_CRITERIA_UPDATE", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "NAME_PLATE_UNIT_ADDED",
     "NAME_PLATE_UNIT_REMOVED", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "CRITERIA_UPDATE",
-    "SCENARIO_COMPLETED", "BAG_UPDATE_DELAYED", "CHAT_MSG_LOOT"}) do
+    "SCENARIO_COMPLETED", "BAG_UPDATE_DELAYED", "CHAT_MSG_LOOT", "CRITERIA_EARNED", "CRITERIA_COMPLETE",
+    "ACHIEVEMENT_EARNED", "RECEIVED_ACHIEVEMENT_LIST"}) do
     local ok = pcall(driver.RegisterEvent, driver, event)
     if not ok then failures[#failures + 1] = event end
 end

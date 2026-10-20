@@ -45,8 +45,21 @@ end
 function UnitName(unit) return units[unit] and units[unit].name end
 function UnitGUID(unit) return units[unit] and units[unit].guid end
 function UnitIsDeadOrGhost(unit) return units[unit] and units[unit].dead end
-function GetAchievementNumCriteria() return 1 end
-function GetAchievementCriteriaInfo() return "Localized Rescue" end
+local criteria = {
+    [13132] = {{name = "Localized Rescue", done = false}},
+    [13127] = {},
+}
+local achievementDone, progressUnavailable = {}, false
+function GetAchievementInfo(id)
+    if progressUnavailable then return nil end
+    return id, "Achievement", 10, achievementDone[id] or false
+end
+function GetAchievementNumCriteria(id) return progressUnavailable and 0 or #criteria[id] end
+function GetAchievementCriteriaInfo(id, index)
+    local row = criteria[id][index]
+    if progressUnavailable or not row then return nil end
+    return row.name, 0, row.done, 0
+end
 C_Timer = {}
 local function timer(delay, callback, repeating)
     local t = {due = now + delay, delay = delay, callback = callback, repeating = repeating}
@@ -304,4 +317,84 @@ assert(sounds == beforeResume)
 RaidWarningFrame = {AddMessage = function() error("unavailable UI") end}
 command("test"); assert(IslandQuestAlertNotification:IsShown())
 RaidWarningFrame = native
-print("PASS: quest detection, timers, completion/exit, all 20 Tale items, loot/bag deduplication, and return rewards")
+-- Progress filtering is automatic and applies to all rescue detection sources.
+enter(0, nil)
+criteria[13132] = {
+    {name = "Longpaws", done = true}, {name = "Manape", done = false},
+    {name = "Localized Rescue", done = false},
+}
+criteria[13127] = {
+    {name = "Magical Spyglass", done = true}, {name = "Razorfin Hunting Spear", done = false},
+}
+tasks, quests, lines, forceVisible, pois, vignettes, units = {}, {}, {}, {}, {}, {}, {}
+units.player = {guid = "Player-1-ME"}
+titles[2200] = "Longpaws"
+tasks = {{questID = 2200, isQuestStart = true}}
+pois[5] = {name = "Longpaws", position = vector(.1, .2)}
+vignettes.rescue = {vignetteID = 7, name = "Longpaws", onWorldMap = true, position = vector(.1, .2)}
+units.target = {name = "Longpaws", guid = "Creature-0-1-2-3-12345-ABC"}
+local alertsBefore = #warnings
+enter(1893, 1031)
+assert(#warnings == alertsBefore and not seen("rescue:longpaws"))
+command("allow quest 2200"); scan()
+assert(#warnings == alertsBefore) -- Explicit allows cannot override known completion.
+units.mouseover = {name = "Manape", guid = "Creature-0-1-2-3-12346-ABC"}
+event("UPDATE_MOUSEOVER_UNIT"); advance(.3)
+assert(#warnings == alertsBefore + 1 and seen("rescue:manape"))
+-- A criteria update suppresses subsequent repeats in the same expedition.
+criteria[13132][2].done = true
+event("CRITERIA_UPDATE"); advance(.3)
+alertsBefore = #warnings
+advance(32); assert(#warnings == alertsBefore)
+-- A newly incomplete criterion can alert without a manual reset if never alerted here.
+criteria[13132][1].done = false
+event("CRITERIA_EARNED", 13132, "test", false); advance(.3)
+assert(#warnings == alertsBefore + 1 and seen("rescue:longpaws"))
+-- A completed achievement suppresses rescues even if individual flags are missing.
+achievementDone[13132] = true
+criteria[13132] = {}
+event("ACHIEVEMENT_EARNED", 13132); advance(.3)
+alertsBefore = #warnings
+advance(32); assert(#warnings == alertsBefore)
+-- Tale receipts consult quest criteria; looting an item never marks it completed.
+enter(0, nil); advance(16)
+local receiptsBefore = receiptCount()
+alertsBefore = #warnings
+counts[163475] = counts[163475] + 1; event("BAG_UPDATE_DELAYED")
+loot(163475, 1)
+assert(receiptCount() == receiptsBefore and #warnings == alertsBefore)
+counts[163483] = counts[163483] + 1; event("BAG_UPDATE_DELAYED")
+assert(receiptCount() == receiptsBefore + 1)
+assert(criteria[13127][2].done == false)
+-- Completed localized criterion labels match names returned by the item cache.
+criteria[13127] = {{name = "Lunette localisee", done = true}}
+C_Item.GetItemInfo = function(id) if id == 163475 then return "Lunette localisee" end end
+event("RECEIVED_ACHIEVEMENT_LIST"); advance(16)
+receiptsBefore = receiptCount()
+counts[163475] = counts[163475] + 1; event("BAG_UPDATE_DELAYED")
+assert(receiptCount() == receiptsBefore)
+C_Item.GetItemInfo = function() return nil end
+-- Completion of the full Tale achievement suppresses all item types immediately,
+-- even outside islands and when individual criteria are not available.
+achievementDone[13127] = true
+criteria[13127] = {}
+event("CRITERIA_COMPLETE", 1)
+for id in pairs(ns.taleItems) do counts[id] = counts[id] + 1 end
+event("BAG_UPDATE_DELAYED"); assert(receiptCount() == receiptsBefore)
+-- With both achievements complete, even unclassified quest starts stay quiet.
+tasks = {{questID = 3300, isQuestStart = true}}; titles[3300] = "Unclassified offer"
+units.target, units.mouseover = nil, nil; pois, vignettes = {}, {}
+alertsBefore = #warnings
+enter(1893, 1031); assert(#warnings == alertsBefore)
+-- Missing API data never masquerades as completed credit; keep potential alerts.
+progressUnavailable = true
+event("RECEIVED_ACHIEVEMENT_LIST"); advance(.3)
+assert(#warnings == alertsBefore + 1)
+advance(16); receiptsBefore = receiptCount()
+counts[163483] = counts[163483] + 1; event("BAG_UPDATE_DELAYED")
+assert(receiptCount() == receiptsBefore + 1)
+progressUnavailable = false
+event("RECEIVED_ACHIEVEMENT_LIST"); advance(.3)
+alertsBefore = #warnings
+advance(32); assert(#warnings == alertsBefore)
+print("PASS: detection, timing, item receipts, native alerts, and automatic achievement-progress filtering")
