@@ -11,13 +11,22 @@ ns.Prospects = {
         {key = "icetusk", name = "Icetusk trolls", words = {"icetusk"}, items = {163474}},
         {key = "vrykul", name = "Vrykul", words = {"vrykul", "bloodwake"}, items = {163472}},
         {key = "jinyu", name = "Jinyu", words = {"jinyu", "razorfin"}, items = {163483}},
-        {key = "mantid", name = "Mantid", words = {"mantid"}, items = {163473}},
+        {key = "mantid", name = "Mantid", words = {"mantid", "zarathik", "wallbreakerhavik", "wingleadersrakik"}, items = {163473}},
         {key = "hozen", name = "Hozen", words = {"hozen"}, items = {163466}},
     },
 }
+-- Confirmed Island Expedition NPC entries; IDs survive client translation.
+local npcGroups = {[139537] = "mantid", [139538] = "mantid", [138843] = "mantid"}
 local vorus = {key = "vorusarak", name = "Vorus'arak", items = {163484}, exact = true}
 function ns.Prospects.Match(name, npcID)
     if npcID == 139889 then return {vorus} end
+    if npcGroups[npcID] then
+        for _, group in ipairs(ns.Prospects.groups) do
+            if group.key == npcGroups[npcID] then
+                return {{key = group.key, name = group.name, items = group.items, exact = true}}
+            end
+        end
+    end
     if type(name) ~= "string" then return {} end
     local text = name:lower():gsub("[%s%p]", "")
     local found = {}

@@ -1,13 +1,11 @@
-IslandQuestAlert can now flag possible enemy sources for your remaining Tale quests.
+Fixes two enemy-detection coverage gaps and adds direct target diagnostics.
 
-- Automatically compares observed enemy clues with incomplete achievement criteria.
-- Recognizes the supplied farming leads for eleven items, including Pirates, Icetusk, Jinyu, Mantid and Hozen.
-- Recognizes Vorus'arak by creature ID across languages.
-- Shows a possible-source warning once per group/item per run; `/iqa prospects` lists the clues.
-- Saves clues alongside each expedition, separately from actual needed-item receipts.
+- Mantid rules now include Zara'thik, Wall-Breaker Ha'vik and Wingleader Srak'ik.
+- Verified NPC IDs 139537, 139538 and 138843 work independently of client language.
+- Nameplates already visible after reload are scanned, even without a new-plate event.
+- `/iqa inspect` prints the current target's ID, match, achievement state and suppression reason, including a Sonic Stone check.
+- Debug logs explain changed prospect decisions and non-attackable/dead unit exclusions.
 
-Update through WowUp from `https://github.com/teegles/IslandQuestAlert`.
+Update through WowUp from `https://github.com/teegles/IslandQuestAlert`. If an enemy still produces no hint, target it and share `/iqa inspect` output.
 
-A name clue is not loot eligibility or a guaranteed drop. The addon sees exposed attackable NPCs and visible positioned vignettes, not a full island roster. English name-fragment coverage is limited; no clue means unknown. Makrura are excluded from the unverified carapace association. Unknown achievement progress does not trigger missing-item source hints.
-
-Lua 5.1/LuaJIT mock tests pass. Current Retail gameplay and UI behavior still require in-game validation.
+Needed criteria are still required, and hints remain possible-source clues rather than promised drops. Lua 5.1/LuaJIT mock tests cover Mantid names/IDs, pre-existing nameplates, duplicate suppression, completed Sonic Stone and read-only inspection. The user's particular missed NPC is not yet confirmed without in-game target data.

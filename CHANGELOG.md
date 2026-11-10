@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1
+
+- Fix Mantid name coverage for Zara'thik and named invasion leaders.
+- Add verified Mantid-invasion NPC IDs for language-independent matching.
+- Discover existing nameplates after reload instead of relying only on new-plate events.
+- Add `/iqa inspect` to show target ID, eligibility and suppression reasons without debug mode.
+- Log changed prospect decisions and unit visibility/attackability gates in debug mode.
+
 ## 1.4.0
 
 - Add automatic possible-source hints for the supplied list of eleven remaining Tale items.

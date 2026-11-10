@@ -56,6 +56,7 @@ The addon starts and stops island scanning automatically. No sound file, frame p
 | Command | Action |
 | --- | --- |
 | `/iqa` or `/iqa stats` | Toggle the expedition stats window. Tracking is automatic. |
+| `/iqa inspect` | Diagnose your current target and the exact reason a prospect alert is allowed or suppressed. |
 | `/iqa prospects` | List observed possible enemy/item matches for this run. |
 | `/iqa help` | List optional commands. |
 | `/iqa test` | Test the screen notification, chat message, and built-in sound (if enabled). |
@@ -89,18 +90,26 @@ The addon can now show **POSSIBLE TALE ITEM SOURCE** when it observes a matching
 | Icetusk Fur Cloak | Icetusk |
 | Bloodwake Drinking Horn | Vrykul / Bloodwake |
 | Razorfin Hunting Spear | Jinyu / Razorfin |
-| Sonic Stone | Mantid |
+| Sonic Stone | Mantid / Zara'thik; Wall-Breaker Ha'vik / Wingleader Srak'ik |
 | Notched Coin | Hozen |
 
 These are **leads supplied for this farm, not verified loot eligibility rules**. Seeing a group does not establish that its required rare spawned, that you have earned a reward, or that an item will drop. No drop probability or guarantee is inferred. Makrura are deliberately excluded from the carapace match: [reports on Vorus'arak](https://www.wowhead.com/npc=139889/vorusarak) specifically concern that named NPC on Skittering Hollow.
 
-Scanning observes your attackable target, mouseover and available nameplates, plus living/visible vignettes that resolve on the current island map. It does not target enemies, enable nameplates or enumerate arbitrary hidden NPCs. English name fragments such as `pirate`, `icetusk` or `razorfin` are **name clues**, not a creature-family API. Generic names such as Captain, or a broad type such as Humanoid, are insufficient. Non-English names may not match; the verified creature ID **139889** identifies Vorus'arak independently of language. An exact English name can also identify a visible Vorus'arak vignette without an object GUID.
+Scanning observes your attackable target, mouseover and available nameplates (including plates already present after a reload), plus living/visible vignettes that resolve on the current island map. It does not target enemies, enable nameplates or enumerate arbitrary hidden NPCs. English name fragments such as `pirate`, `icetusk` or `razorfin` are **name clues**, not a creature-family API. Generic names such as Captain, or a broad type such as Humanoid, are insufficient. Non-English names may not match; the verified creature ID **139889** identifies Vorus'arak independently of language. Mantid-invasion IDs **139537** (Zara'thik Kunchong), **139538** (Wall-Breaker Ha'vik), and **138843** (Wingleader Srak'ik) also work independently of language. An exact English name can also identify a visible Vorus'arak vignette without an object GUID.
 
 Hints are automatic and use the normal sound, screen and chat display, once per matching group/item per expedition. Unlike the conservative fallback for quest/item alerts, a farming hint requires **explicitly incomplete** criterion data. Unknown progress does not produce speculative missing-item hints. Normal achievement progress controls the list; completing a criterion removes it from new hints. `/iqa reset` allows hints again; `/iqa prospects` lists this run's observed clues.
 
 Run history stores these as **[POSSIBLE SOURCE]** entries, distinct from **NEEDED ITEM** receipts. They do not change item totals or reset the dry streak. Historical entries reflect what was missing at the time of observation.
 
 There is no full-island enemy roster or “this run will drop quest X” result in the investigated public APIs. The weekly queue cards are presented through UI widgets; their artwork is not a reliable roster of this run's rares or invasions. An island name alone is not used to declare it useful/useless. **No matching clue observed means unknown, not that the island has nothing you need.** Opening the map is not required, but you may need to explore or encounter a relevant enemy before a clue can be seen.
+
+## If you can see an enemy but get no hint
+
+Target that enemy and run **`/iqa inspect`**. It prints the addon version, island/map status, target name and NPC ID, whether the target is attackable/dead, matched groups, achievement criterion state and whether that group/item already alerted in this run. It always includes a Sonic Stone progress check. The command does not require debug mode and does not reset or manufacture an alert.
+
+A result of **needed** means progress permits an alert; **complete** means the criterion or achievement suppresses it; **unknown** means the achievement information could not be matched/read. **No enemy-name/NPC-ID match** identifies a missing mapping. If this happens, share the target-check output so the exact NPC can be verified and added. `/iqa debug` also records changed prospect decisions and unit gates; turn it off after troubleshooting to avoid diagnostic chatter.
+
+Version 1.4.0 only matched the literal word `mantid`, so it missed documented Zara'thik and named Mantid invasion NPCs. Version 1.4.1 adds those matches and rescans nameplates already present on screen. These fixes address specific coverage gaps; they do not prove the cause of every missing alert.
 
 ## Expedition stats and item history
 

@@ -70,6 +70,8 @@ local function timer(delay, callback, repeating)
 end
 function C_Timer.NewTimer(d, f) return timer(d, f, false) end
 function C_Timer.NewTicker(d, f) return timer(d, f, true) end
+local visiblePlates = {}
+C_NamePlate = {GetNamePlates = function() return visiblePlates end}
 C_Map = {GetBestMapForUnit = function() return currentMap end}
 C_QuestLog = {
     GetQuestsOnMap = function(id) assert(id == currentMap); return quests end,
@@ -453,6 +455,39 @@ for _, name in ipairs({"Naga", "Icetusk Troll", "Bloodwake Vrykul", "Razorfin Ji
     assert(#ns.Prospects.Match(name, 999005) == 1)
 end
 enter(0, nil)
+-- Mantid tribe/leader names do not necessarily contain the word Mantid.
+criteria[13127] = {{name = "Sonic Stone", done = false}}
+units, vignettes, tasks, quests, lines, pois = {}, {}, {}, {}, {}, {}
+units.target = {name = "Zara'thik Warrior", guid = "Creature-0-1-2-3-999010-ABC", attackable = true}
+local previousWarnings = #warnings
+enter(1893, 1031)
+assert(#warnings == previousWarnings + 1)
+assert(warnings[#warnings].text:find("Sonic Stone", 1, true))
+assert(#ns.Prospects.Match("Wingleader Srak'ik", nil) == 1)
+assert(#ns.Prospects.Match("Wall-Breaker Ha'vik", nil) == 1)
+for _, npcID in ipairs({139537, 139538, 138843}) do
+    local matches = ns.Prospects.Match("Localized NPC", npcID)
+    assert(#matches == 1 and matches[1].key == "mantid" and matches[1].exact)
+end
+local countBeforeInspect = #warnings
+command("inspect"); assert(#warnings == countBeforeInspect)
+assert(messages[#messages]:find("Sonic Stone check: needed", 1, true))
+-- A pre-existing nameplate works without a NAME_PLATE_UNIT_ADDED event.
+enter(0, nil)
+units.target = nil
+units.nameplate1 = {name = "Localized NPC", guid = "Creature-0-1-2-3-139537-ABC", attackable = true}
+visiblePlates = {{GetUnit = function() return "nameplate1" end}}
+previousWarnings = #warnings
+enter(1893, 1031); assert(#warnings == previousWarnings + 1)
+scan(); assert(#warnings == previousWarnings + 1)
+visiblePlates = {{namePlateUnitToken = "nameplate1"}} -- Older frame field fallback.
+scan(); assert(#warnings == previousWarnings + 1)
+-- A completed Sonic Stone criterion still suppresses Mantid notifications.
+criteria[13127][1].done = true
+event("CRITERIA_UPDATE"); scan(); command("inspect")
+assert(messages[#messages]:find("Sonic Stone check: complete", 1, true))
+assert(#warnings == previousWarnings + 1)
+visiblePlates = {}; enter(0, nil)
 -- Isolate the ledger to test precise totals, reloads and reward attribution.
 local statsNS, savedStats = {}, {}
 assert(loadfile("Stats.lua"))("IslandQuestAlert", statsNS)

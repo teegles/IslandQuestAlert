@@ -171,19 +171,32 @@ local function notify(objective, priority)
         if not alert:IsShown() then showNext() end
     end
 end
+local function prospectItemState(id)
+    local name = call(C_Item, "GetItemInfo", id) or taleItems[id]
+    local progress = achievementProgress[13127]
+    local completed = progressReason(13127, name, taleItems[id])
+    if completed then return "complete", name, completed end
+    if not progress or progress.complete ~= false then return "unknown", name, "whole-achievement progress unavailable" end
+    if progress.byName[normalize(name)] == false or progress.byName[normalize(taleItems[id])] == false then
+        return "needed", name, "criterion incomplete"
+    end
+    return "unknown", name, "criterion unavailable or name did not match"
+end
 local function observeProspect(name, npcID, source)
     if not active or not session or session.endedAt then return end
-    local progress = achievementProgress[13127]
-    if not progress or progress.complete ~= false then return end
-    for _, group in ipairs(ns.Prospects.Match(name, npcID)) do
+    local groups = ns.Prospects.Match(name, npcID)
+    if #groups == 0 then
+        changed("prospect-name:" .. scalar(npcID) .. ":" .. scalar(name), "No prospect match: " .. scalar(name) .. " npc=" .. scalar(npcID))
+    end
+    for _, group in ipairs(groups) do
         local items = {}
         session.prospectSeen = session.prospectSeen or {}
         for _, id in ipairs(group.items) do
-            local itemName = call(C_Item, "GetItemInfo", id) or taleItems[id]
-            local needed = (progress.byName[normalize(itemName)] == false or progress.byName[normalize(taleItems[id])] == false)
-                and not progressReason(13127, itemName, taleItems[id])
+            local state, itemName, reason = prospectItemState(id)
             local key = group.key .. ":" .. id
-            if needed and not session.prospectSeen[key] then
+            local decision = state ~= "needed" and reason or (session.prospectSeen[key] and "already alerted this expedition" or "will alert")
+            changed("prospect-decision:" .. key, "Prospect " .. group.name .. " -> " .. itemName .. ": " .. decision)
+            if state == "needed" and not session.prospectSeen[key] then
                 session.prospectSeen[key] = true
                 items[#items + 1] = {id = id, name = itemName}
             end
@@ -465,8 +478,13 @@ local function scanUnit(unit)
     if not guid then return end
     local matched = rescueMatch(name)
     local npcID = tonumber(guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))
-    if npcID and not call(_G, "UnitIsDeadOrGhost", unit) and call(_G, "UnitCanAttack", "player", unit) == true then
+    local dead = call(_G, "UnitIsDeadOrGhost", unit)
+    local attackable = npcID and call(_G, "UnitCanAttack", "player", unit)
+    if npcID and not dead and attackable == true then
         observeProspect(name, npcID, "attackable unit " .. unit)
+    else
+        changed("prospect-unit:" .. unit .. ":" .. scalar(npcID), "Prospect unit skipped: " .. scalar(name)
+            .. " npc=" .. scalar(npcID) .. " dead=" .. scalar(dead) .. " attackable=" .. scalar(attackable))
     end
     local allowed = matched or (npcID and db.allow.npc[npcID])
     local o = {key = matched and "rescue:" .. matched or "npc:" .. scalar(npcID),
@@ -486,6 +504,10 @@ local function scan(snapshot)
     scanMap(mapID, snapshot)
     scanVignettes(snapshot)
     scanUnit("target"); scanUnit("mouseover")
+    for _, frame in pairs(call(C_NamePlate, "GetNamePlates") or {}) do
+        local unit = type(frame.GetUnit) == "function" and call(frame, "GetUnit") or frame.namePlateUnitToken
+        if not (issecretvalue and issecretvalue(unit)) and type(unit) == "string" then plates[unit] = true end
+    end
     for unit in pairs(plates) do scanUnit(unit) end
     local now = time()
     for key, o in pairs(candidates) do
@@ -586,10 +608,33 @@ local function dump()
         tinsert(UISpecialFrames, "IslandQuestAlertDiagnostics")
     end
     local _, _, _, interface = GetBuildInfo()
-    local header = "IslandQuestAlert 1.4.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
+    local header = "IslandQuestAlert 1.4.1 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
         .. " active=" .. tostring(active) .. " instance=" .. scalar(instanceID) .. " map=" .. scalar(mapID)
     IslandQuestAlertDiagnostics.edit:SetText(header .. "\n" .. table.concat(db.log, "\n"))
     IslandQuestAlertDiagnostics:Show()
+end
+local function inspectTarget()
+    refreshProgress()
+    chat("IslandQuestAlert 1.4.1 target check: island=" .. tostring(active == true)
+        .. " map=" .. scalar(mapID) .. " ended=" .. tostring(session and session.endedAt ~= nil or false))
+    local name = call(_G, "UnitName", "target")
+    local guid = call(_G, "UnitGUID", "target")
+    local npcID = type(guid) == "string" and tonumber(guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))
+    chat("Target=" .. scalar(name) .. " NPC=" .. scalar(npcID)
+        .. " attackable=" .. scalar(call(_G, "UnitCanAttack", "player", "target"))
+        .. " dead=" .. scalar(call(_G, "UnitIsDeadOrGhost", "target")))
+    local groups = ns.Prospects.Match(name, npcID)
+    if #groups == 0 then chat("No enemy-name/NPC-ID match; this target needs a mapping") end
+    for _, group in ipairs(groups) do
+        chat("Matched group=" .. group.name .. " evidence=" .. (group.exact and "NPC/name identity" or "name clue"))
+        for _, id in ipairs(group.items) do
+            local state, itemName, reason = prospectItemState(id)
+            local seen = session and session.prospectSeen and session.prospectSeen[group.key .. ":" .. id]
+            chat(itemName .. " (" .. id .. "): " .. state .. " - " .. reason .. "; alerted this run=" .. tostring(seen == true))
+        end
+    end
+    local state, _, reason = prospectItemState(163473)
+    chat("Sonic Stone check: " .. state .. " - " .. reason)
 end
 SLASH_ISLANDQUESTALERT1 = "/iqa"
 SlashCmdList.ISLANDQUESTALERT = function(message)
@@ -622,6 +667,7 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
             chat("Last island: " .. (islands[db.lastRun.instanceID] or "Island") .. " - "
                 .. duration(db.lastRun.elapsed) .. " from entry (" .. db.lastRun.reason .. ")")
         elseif not session then chat("No recorded expedition yet") end
+    elseif command == "inspect" then inspectTarget()
     elseif command == "prospects" then
         local run = session and ns.Stats.GetRun(session)
         local clues = run and run.prospects or {}
@@ -657,7 +703,7 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
         db.allow[kind][id] = command == "allow" or nil
         chat(command .. " " .. kind .. " " .. id); decisions = {}; schedule()
     else
-        chat("Commands: stats, prospects, test, debug, status, time, sound, reset, repeat, interval N, snapshot, dump, allow/deny TYPE ID")
+        chat("Commands: stats, prospects, inspect, test, debug, status, time, sound, reset, repeat, interval N, snapshot, dump, allow/deny TYPE ID")
     end
 end
 local locationEvents = {PLAYER_ENTERING_WORLD = true, ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ZONE_CHANGED_INDOORS = true}
