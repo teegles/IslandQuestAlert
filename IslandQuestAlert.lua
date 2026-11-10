@@ -171,6 +171,35 @@ local function notify(objective, priority)
         if not alert:IsShown() then showNext() end
     end
 end
+local function observeProspect(name, npcID, source)
+    if not active or not session or session.endedAt then return end
+    local progress = achievementProgress[13127]
+    if not progress or progress.complete ~= false then return end
+    for _, group in ipairs(ns.Prospects.Match(name, npcID)) do
+        local items = {}
+        session.prospectSeen = session.prospectSeen or {}
+        for _, id in ipairs(group.items) do
+            local itemName = call(C_Item, "GetItemInfo", id) or taleItems[id]
+            local needed = (progress.byName[normalize(itemName)] == false or progress.byName[normalize(taleItems[id])] == false)
+                and not progressReason(13127, itemName, taleItems[id])
+            local key = group.key .. ":" .. id
+            if needed and not session.prospectSeen[key] then
+                session.prospectSeen[key] = true
+                items[#items + 1] = {id = id, name = itemName}
+            end
+        end
+        if #items > 0 then
+            local names = {}
+            for _, item in ipairs(items) do names[#names + 1] = item.name end
+            ns.Stats.RecordProspect(session, group, items, name, source)
+            local evidence = group.exact and "spotted" or "name clue"
+            notify({kind = "quest", title = "POSSIBLE TALE ITEM SOURCE",
+                name = group.name .. " (" .. evidence .. "): " .. (name or "NPC") .. "\nYou need: "
+                    .. table.concat(names, ", ") .. " - item not guaranteed"})
+            log("Prospect: " .. group.key .. " evidence=" .. source .. " npc=" .. scalar(npcID))
+        end
+    end
+end
 local function discardQuestAlerts()
     local retained = {}
     for _, message in ipairs(queue) do
@@ -412,6 +441,10 @@ local function scanVignettes(snapshot)
         if publicData(info) then
             local position = call(C_VignetteInfo, "GetVignettePosition", guid, mapID)
             local x, y = xy(position)
+            if position and not info.isDead and not info.inFogOfWar and (info.onWorldMap or info.onMinimap) then
+                local npcID = type(info.objectGUID) == "string" and tonumber(info.objectGUID:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))
+                observeProspect(info.name, npcID, "visible vignette")
+            end
             local matched = rescueMatch(info.name)
             local allowed = matched or db.allow.vignette[info.vignetteID]
             -- No generic atlas substring or rewardQuestID heuristic: rares also have these.
@@ -432,6 +465,9 @@ local function scanUnit(unit)
     if not guid then return end
     local matched = rescueMatch(name)
     local npcID = tonumber(guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))
+    if npcID and not call(_G, "UnitIsDeadOrGhost", unit) and call(_G, "UnitCanAttack", "player", unit) == true then
+        observeProspect(name, npcID, "attackable unit " .. unit)
+    end
     local allowed = matched or (npcID and db.allow.npc[npcID])
     local o = {key = matched and "rescue:" .. matched or "npc:" .. scalar(npcID),
         name = name, mapID = mapID, source = "unit:" .. unit .. ":" .. scalar(npcID)}
@@ -550,7 +586,7 @@ local function dump()
         tinsert(UISpecialFrames, "IslandQuestAlertDiagnostics")
     end
     local _, _, _, interface = GetBuildInfo()
-    local header = "IslandQuestAlert 1.3.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
+    local header = "IslandQuestAlert 1.4.0 interface=" .. scalar(interface) .. " locale=" .. GetLocale()
         .. " active=" .. tostring(active) .. " instance=" .. scalar(instanceID) .. " map=" .. scalar(mapID)
     IslandQuestAlertDiagnostics.edit:SetText(header .. "\n" .. table.concat(db.log, "\n"))
     IslandQuestAlertDiagnostics:Show()
@@ -575,7 +611,7 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
         if not n or n < 0.5 or n > 60 then chat("Use /iqa interval 0.5 through 60 (seconds)"); return end
         db.interval = n; if active then startTicker() end; chat("Scan interval: " .. n .. " seconds")
     elseif command == "reset" then
-        if session then session.seen = {} end
+        if session then session.seen = {}; session.prospectSeen = {} end
         decisions = {}; discardQuestAlerts(); chat("Current expedition detections cleared"); schedule()
     elseif command == "time" then
         if session then
@@ -586,6 +622,15 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
             chat("Last island: " .. (islands[db.lastRun.instanceID] or "Island") .. " - "
                 .. duration(db.lastRun.elapsed) .. " from entry (" .. db.lastRun.reason .. ")")
         elseif not session then chat("No recorded expedition yet") end
+    elseif command == "prospects" then
+        local run = session and ns.Stats.GetRun(session)
+        local clues = run and run.prospects or {}
+        if #clues == 0 then chat("No matching enemy clues observed yet; this does not rule out useful enemies") end
+        for _, clue in ipairs(clues) do
+            local names = {}
+            for _, item in ipairs(clue.items) do names[#names + 1] = item.name end
+            chat(clue.group .. ": " .. clue.observed .. " -> " .. table.concat(names, ", ") .. " (possible source only)")
+        end
     elseif command == "status" then
         chat("Scanning=" .. tostring(active == true and not (session and session.endedAt)) .. " instance=" .. scalar(instanceID)
             .. " map=" .. scalar(mapID) .. " interval=" .. db.interval .. "s sound=" .. tostring(db.sound)
@@ -612,7 +657,7 @@ SlashCmdList.ISLANDQUESTALERT = function(message)
         db.allow[kind][id] = command == "allow" or nil
         chat(command .. " " .. kind .. " " .. id); decisions = {}; schedule()
     else
-        chat("Commands: stats, test, debug, status, time, sound, reset, repeat, interval N, snapshot, dump, allow/deny TYPE ID")
+        chat("Commands: stats, prospects, test, debug, status, time, sound, reset, repeat, interval N, snapshot, dump, allow/deny TYPE ID")
     end
 end
 local locationEvents = {PLAYER_ENTERING_WORLD = true, ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ZONE_CHANGED_INDOORS = true}

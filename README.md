@@ -26,6 +26,7 @@ World of Warcraft/
             └── IslandQuestAlert/
                 ├── IslandQuestAlert.toc
                 ├── TaleItems.lua
+                ├── Prospects.lua
                 ├── Stats.lua
                 ├── IslandQuestAlert.lua
                 ├── README.md
@@ -55,6 +56,7 @@ The addon starts and stops island scanning automatically. No sound file, frame p
 | Command | Action |
 | --- | --- |
 | `/iqa` or `/iqa stats` | Toggle the expedition stats window. Tracking is automatic. |
+| `/iqa prospects` | List observed possible enemy/item matches for this run. |
 | `/iqa help` | List optional commands. |
 | `/iqa test` | Test the screen notification, chat message, and built-in sound (if enabled). |
 | `/iqa debug` | Toggle automatic diagnostic chat and a saved 400-line log. Off by default. |
@@ -72,6 +74,33 @@ The addon starts and stops island scanning automatically. No sound file, frame p
 Example syntax only: `/iqa allow quest 12345`. **12345 is a placeholder, not a verified rescue quest ID.** Allowlist only IDs you have confirmed in diagnostic output. A wrong entry can intentionally re-enable an unrelated objective.
 
 Settings, frame position, log, timer/last result, expedition history/item ledger and expedition deduplication are saved per character in `WTF/Account/<account>/<realm>/<character>/SavedVariables/IslandQuestAlert.lua`. Save occurs on logout or `/reload`; do not edit SavedVariables while the game is running.
+
+## Is this island useful for my remaining Tale quests?
+
+The addon can now show **POSSIBLE TALE ITEM SOURCE** when it observes a matching enemy/name clue for a quest criterion you still need. It uses these supplied farming leads:
+
+| Item | Enemy-name lead |
+| --- | --- |
+| Broken Compass / Magical Spyglass | Pirates, Buccaneers, Southsea |
+| Strangling Root | Keeper(s) of the Grove |
+| Druidic Fur | Druid(s) of the Claw |
+| Vorus'arak's Carapace | Nerubians; specifically look for Vorus'arak |
+| Murloc Eye | Naga |
+| Icetusk Fur Cloak | Icetusk |
+| Bloodwake Drinking Horn | Vrykul / Bloodwake |
+| Razorfin Hunting Spear | Jinyu / Razorfin |
+| Sonic Stone | Mantid |
+| Notched Coin | Hozen |
+
+These are **leads supplied for this farm, not verified loot eligibility rules**. Seeing a group does not establish that its required rare spawned, that you have earned a reward, or that an item will drop. No drop probability or guarantee is inferred. Makrura are deliberately excluded from the carapace match: [reports on Vorus'arak](https://www.wowhead.com/npc=139889/vorusarak) specifically concern that named NPC on Skittering Hollow.
+
+Scanning observes your attackable target, mouseover and available nameplates, plus living/visible vignettes that resolve on the current island map. It does not target enemies, enable nameplates or enumerate arbitrary hidden NPCs. English name fragments such as `pirate`, `icetusk` or `razorfin` are **name clues**, not a creature-family API. Generic names such as Captain, or a broad type such as Humanoid, are insufficient. Non-English names may not match; the verified creature ID **139889** identifies Vorus'arak independently of language. An exact English name can also identify a visible Vorus'arak vignette without an object GUID.
+
+Hints are automatic and use the normal sound, screen and chat display, once per matching group/item per expedition. Unlike the conservative fallback for quest/item alerts, a farming hint requires **explicitly incomplete** criterion data. Unknown progress does not produce speculative missing-item hints. Normal achievement progress controls the list; completing a criterion removes it from new hints. `/iqa reset` allows hints again; `/iqa prospects` lists this run's observed clues.
+
+Run history stores these as **[POSSIBLE SOURCE]** entries, distinct from **NEEDED ITEM** receipts. They do not change item totals or reset the dry streak. Historical entries reflect what was missing at the time of observation.
+
+There is no full-island enemy roster or “this run will drop quest X” result in the investigated public APIs. The weekly queue cards are presented through UI widgets; their artwork is not a reliable roster of this run's rares or invasions. An island name alone is not used to declare it useful/useless. **No matching clue observed means unknown, not that the island has nothing you need.** Opening the map is not required, but you may need to explore or encounter a relevant enemy before a clue can be seen.
 
 ## Expedition stats and item history
 
@@ -166,11 +195,11 @@ To validate stats in game, open `/iqa stats`, finish one island and verify that 
 From the addon directory:
 
 ```bash
-luac5.1 -p TaleItems.lua Stats.lua IslandQuestAlert.lua
+luac5.1 -p TaleItems.lua Prospects.lua Stats.lua IslandQuestAlert.lua
 lua5.1 tests/run.lua
 ```
 
-The mock suite covers entry/exit on all eleven instance IDs, unrelated-objective filtering, cross-source deduplication, reload persistence, asynchronous quest names, missing-map recovery, repeat timing, sound settings and diagnostic export. It also covers completion vs. exit, timer persistence, all twenty item IDs, personal loot filtering, localized stack messages, duplicate receipts, rewards during return loading, completed and incomplete achievement criteria, account completion, localized criterion names and missing progress data. Stats tests cover persistent run counts, reload idempotence, late reward attribution, needed/unknown/completed item states, streaks, unassigned receipts, pagination and offline interruptions. Tests are not loaded by the TOC. Actual marker availability, visuals, sound playback, achievement localization, and modern client restrictions still require the in-game procedure above.
+The mock suite covers entry/exit on all eleven instance IDs, unrelated-objective filtering, cross-source deduplication, reload persistence, asynchronous quest names, missing-map recovery, repeat timing, sound settings and diagnostic export. It also covers completion vs. exit, timer persistence, all twenty item IDs, personal loot filtering, localized stack messages, duplicate receipts, rewards during return loading, completed and incomplete achievement criteria, account completion, localized criterion names and missing progress data. Stats tests cover persistent run counts, reload idempotence, late reward attribution, needed/unknown/completed item states, streaks, unassigned receipts, pagination and offline interruptions. Prospect tests cover progress filtering, per-run and cross-source deduplication, attackable NPC evidence, player/friendly exclusions, language-independent Vorus ID matching, name-fragment leads and separation from actual receipts. Tests are not loaded by the TOC. Actual marker availability, visuals, sound playback, achievement localization, and modern client restrictions still require the in-game procedure above.
 
 See [API_RESEARCH.md](API_RESEARCH.md) for checked signatures, Blizzard source links, and the boundaries of closed-map detection.
 

@@ -45,6 +45,7 @@ end
 function UnitName(unit) return units[unit] and units[unit].name end
 function UnitGUID(unit) return units[unit] and units[unit].guid end
 function UnitIsDeadOrGhost(unit) return units[unit] and units[unit].dead end
+function UnitCanAttack(_, unit) return units[unit] and units[unit].attackable or false end
 local criteria = {
     [13132] = {{name = "Localized Rescue", done = false}},
     [13127] = {},
@@ -96,6 +97,7 @@ C_Item = {GetItemCount = function(id) return counts[id] or 0 end, GetItemInfo = 
 C_ScenarioInfo = {GetScenarioInfo = function() return {isComplete = scenarioComplete} end}
 local ns = {}
 assert(loadfile("TaleItems.lua"))("IslandQuestAlert", ns)
+assert(loadfile("Prospects.lua"))("IslandQuestAlert", ns)
 assert(loadfile("Stats.lua"))("IslandQuestAlert", ns)
 assert(loadfile("IslandQuestAlert.lua"))("IslandQuestAlert", ns)
 local driver = frames[1]
@@ -406,6 +408,51 @@ assert(integrated.needed > 0 and integrated.unknown > 0 and integrated.alreadyCo
 command("stats"); assert(IslandQuestAlertStats:IsShown())
 assert(IslandQuestAlertStats.summary.text:find("Needed item receipts:", 1, true))
 command(""); assert(not IslandQuestAlertStats:IsShown())
+-- Creature-name leads use incomplete criteria, not the raw missing-item list.
+enter(0, nil)
+achievementDone[13127], achievementDone[13132] = false, false
+criteria[13127] = {{name = "Broken Compass", done = false}, {name = "Magical Spyglass", done = true},
+    {name = "Vorus'arak's Carapace", done = false}}
+tasks, quests, lines, pois, vignettes, units = {}, {}, {}, {}, {}, {}
+units.target = {name = "Southsea Buccaneer", guid = "Creature-0-1-2-3-999001-ABC", attackable = true}
+local warningBefore = #warnings
+enter(1893, 1031)
+assert(#warnings == warningBefore + 1)
+assert(warnings[#warnings].text:find("POSSIBLE TALE ITEM SOURCE", 1, true))
+assert(warnings[#warnings].text:find("Broken Compass", 1, true))
+assert(not warnings[#warnings].text:find("Magical Spyglass", 1, true))
+local currentRun = ns.Stats.GetRun(IslandQuestAlertDB.session)
+assert(#currentRun.prospects == 1 and #currentRun.prospects[1].items == 1)
+local receipts = #IslandQuestAlertDB.stats.receipts
+scan(); assert(#warnings == warningBefore + 1 and #currentRun.prospects == 1)
+assert(#IslandQuestAlertDB.stats.receipts == receipts) -- A clue is not a looted item.
+command("prospects")
+-- Player names, friendly NPCs and dead enemies are not attackable NPC evidence.
+units.target = {name = "Pirate", guid = "Player-1-OTHER", attackable = true}
+scan(); assert(#warnings == warningBefore + 1)
+units.target = {name = "Pirate", guid = "Creature-0-1-2-3-999002-ABC", attackable = false}
+scan(); assert(#warnings == warningBefore + 1)
+-- Vorus'arak is identified across languages by its verified creature ID.
+units.target = {name = "Localized Vorus", guid = "Creature-0-1-2-3-139889-ABC", attackable = true}
+scan(); assert(#warnings == warningBefore + 2)
+assert(currentRun.prospects[2].exact == true)
+units.target = nil
+vignettes.vorus = {name = "Vorus'arak", vignetteID = 999, onWorldMap = true, position = vector(.4, .5)}
+scan(); assert(#warnings == warningBefore + 2) -- Cross-source prospect deduplication.
+-- No speculative lead if the relevant criterion is completed or unavailable.
+criteria[13127][1].done = true
+criteria[13127][3].done = true
+event("CRITERIA_UPDATE"); scan()
+assert(#warnings == warningBefore + 2)
+local matches = ns.Prospects.Match("Makrura Warrior", 999003)
+assert(#matches == 0)
+assert(#ns.Prospects.Match("Humanoid Captain", 999004) == 0)
+-- Every supplied group has a name-fragment lead; this does not verify its drop table.
+for _, name in ipairs({"Naga", "Icetusk Troll", "Bloodwake Vrykul", "Razorfin Jinyu", "Mantid Warrior", "Hozen",
+    "Keeper of the Grove", "Druids of the Claw", "Nerubian"}) do
+    assert(#ns.Prospects.Match(name, 999005) == 1)
+end
+enter(0, nil)
 -- Isolate the ledger to test precise totals, reloads and reward attribution.
 local statsNS, savedStats = {}, {}
 assert(loadfile("Stats.lua"))("IslandQuestAlert", statsNS)
@@ -482,4 +529,4 @@ clock = clock + 1000; stats.Init(savedStats); stats.Leave()
 local interrupted = savedStats.stats.runs[interruptedRun.statsRunID]
 assert(interrupted.reason == "interrupted" and interrupted.elapsed == 5)
 assert(stats.Summary().interrupted == 1 and stats.Summary().completed == 2)
-print("PASS: alerts, progress, persistent stats, reward attribution, streaks, pagination, interruption and UI")
+print("PASS: alerts, progress, prospects, stats, reward attribution, streaks, pagination, interruption and UI")

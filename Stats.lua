@@ -56,6 +56,17 @@ function Stats.Leave()
     history.activeRunID = nil
     Stats.Refresh()
 end
+function Stats.GetRun(session)
+    return runByID(session and session.statsRunID)
+end
+function Stats.RecordProspect(session, group, items, observed, source)
+    local run = Stats.GetRun(session)
+    if not run then return end
+    run.prospects = run.prospects or {}
+    run.prospects[#run.prospects + 1] = {at = time(), group = group.name, items = items,
+        observed = observed or "NPC", source = source, exact = group.exact or false}
+    Stats.Refresh()
+end
 local function associate()
     local run = runByID(history.activeRunID)
     if run and not run.endedAt then return run.id, "during run" end
@@ -154,6 +165,12 @@ function Stats.RenderText()
         lines[#lines + 1] = string.format("#%d  %s  |  %s (%s)  |  %s  |  %s%s", run.id,
             date("%m-%d %H:%M", run.startedAt), run.name or "Island", run.difficulty or "?", state, duration(elapsed) .. (run.reason == "interrupted" and " observed" or ""), mark)
         if run.joinedLate then lines[#lines + 1] = "    Tracking began during this run; earlier item receipts are unavailable." end
+        for _, clue in ipairs(run.prospects or {}) do
+            local names = {}
+            for _, item in ipairs(clue.items) do names[#names + 1] = item.name end
+            lines[#lines + 1] = "    [POSSIBLE SOURCE] " .. clue.group .. ": " .. clue.observed
+                .. " -> " .. table.concat(names, ", ") .. " (" .. clue.source .. ")"
+        end
         for _, receipt in ipairs(receiptsByRun[run.id] or {}) do lines[#lines + 1] = receiptText(receipt) end
         lines[#lines + 1] = ""
     end

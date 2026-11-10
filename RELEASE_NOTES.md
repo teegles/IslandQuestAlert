@@ -1,14 +1,13 @@
-Track your island farming automatically with `/iqa` or `/iqa stats`.
+IslandQuestAlert can now flag possible enemy sources for your remaining Tale quests.
 
-- Persistent per-character history of every observed expedition, difficulty, result and time.
-- Clear NEEDED ITEM markers when a received Tale item matches an incomplete criterion.
-- Completed-run dry streak and needed/unknown/already-completed item receipt totals.
-- Item details beside each run, with personal-loot/inventory source labels.
-- Late return rewards linked within two minutes of completion and marked as inferred.
-- Older/Newer pages, reload-safe run IDs and explicit offline-interruption records.
+- Automatically compares observed enemy clues with incomplete achievement criteria.
+- Recognizes the supplied farming leads for eleven items, including Pirates, Icetusk, Jinyu, Mantid and Hozen.
+- Recognizes Vorus'arak by creature ID across languages.
+- Shows a possible-source warning once per group/item per run; `/iqa prospects` lists the clues.
+- Saves clues alongside each expedition, separately from actual needed-item receipts.
 
-Update through WowUp using `https://github.com/teegles/IslandQuestAlert`.
+Update through WowUp from `https://github.com/teegles/IslandQuestAlert`.
 
-Tracking starts with this update; earlier runs cannot be reconstructed. Unknown progress is labeled separately. Receipt statistics are not drop odds, and inventory increases may include bank/mail retrievals. Existing automatic alerts, achievement filtering and timing continue without configuration.
+A name clue is not loot eligibility or a guaranteed drop. The addon sees exposed attackable NPCs and visible positioned vignettes, not a full island roster. English name-fragment coverage is limited; no clue means unknown. Makrura are excluded from the unverified carapace association. Unknown achievement progress does not trigger missing-item source hints.
 
-Lua 5.1/LuaJIT mock tests pass, including persistence, reward attribution, streaks, pagination and stats UI construction. In-game UI and legacy expedition behavior still require Retail validation.
+Lua 5.1/LuaJIT mock tests pass. Current Retail gameplay and UI behavior still require in-game validation.

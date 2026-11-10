@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0
+
+- Add automatic possible-source hints for the supplied list of eleven remaining Tale items.
+- Compare observed enemy-name clues with explicitly incomplete achievement criteria.
+- Recognize Vorus'arak by NPC ID 139889 across languages; exclude unverified Makrura association.
+- Use attackable target/mouseover/nameplate NPCs and visible positioned vignettes.
+- Deduplicate each group/item hint per expedition and preserve it in run history.
+- Add `/iqa prospects`; source hints never count as item receipts or reset dry streaks.
+
 ## 1.3.0
 
 - Add `/iqa` and `/iqa stats` to open an automatically tracked expedition history.
